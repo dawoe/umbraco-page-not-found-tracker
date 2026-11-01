@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Umbraco.Cms.Tests.Integration" />
+    <!-- Umbraco.Cms.Tests.Integration depends on AutoFixture.NUnit3, which requires NUnit 3.x (as the Umbraco docs state). -->
+    <PackageReference Update="NUnit" VersionOverride="3.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.Tests.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.BackOffice/Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" />
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker/Umbraco.Community.PageNotFoundTracker.csproj" />
+  </ItemGroup>
+
+</Project>

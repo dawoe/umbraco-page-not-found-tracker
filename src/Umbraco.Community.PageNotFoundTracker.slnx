@@ -23,5 +23,6 @@
   <Folder Name="/test/">
     <Project Path="test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests.csproj" />
     <Project Path="test/Umbraco.Community.PageNotFoundTracker.BackOffice.Tests/Umbraco.Community.PageNotFoundTracker.BackOffice.Tests.csproj" />
+    <Project Path="test/Umbraco.Community.PageNotFoundTracker.Integration.Tests/Umbraco.Community.PageNotFoundTracker.Integration.Tests.csproj" />
   </Folder>
 </Solution>
