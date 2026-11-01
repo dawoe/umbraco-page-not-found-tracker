@@ -1,7 +1,46 @@
-## Umbraco Page Not Found Tracker
+# Umbraco Page Not Found Tracker
 
-This Umbraco package records requests that end in a 404 and lets editors turn tracked URLs into redirects or block them.
+An Umbraco package that records requests that end in a 404 and, in later versions, lets editors
+turn tracked URLs into redirects or block them.
 
-Supports Umbraco 17 only.
+This first version contains only the package foundation (a placeholder backoffice dashboard). Tracking,
+redirects and blocking are planned for upcoming versions.
 
-Source and documentation: https://github.com/dawoe/umbraco-page-not-found-tracker
+Supports **Umbraco 17** only.
+
+## Installation
+
+```bash
+dotnet add package Umbraco.Community.PageNotFoundTracker
+```
+
+Call `UsePageNotFoundTracker()` in `Program.cs`, after `BootUmbracoAsync()` and before `UseUmbraco()`:
+
+```csharp
+using Umbraco.Community.PageNotFoundTracker.Extensions;
+
+WebApplication app = builder.Build();
+
+await app.BootUmbracoAsync();
+
+app.UsePageNotFoundTracker();
+
+app.UseUmbraco()
+    .WithMiddleware(u =>
+    {
+        u.UseBackOffice();
+        u.UseWebsite();
+    })
+    .WithEndpoints(u =>
+    {
+        u.UseBackOfficeEndpoints();
+        u.UseWebsiteEndpoints();
+    });
+
+await app.RunAsync();
+```
+
+## Links
+
+- Source, issues and documentation: https://github.com/dawoe/umbraco-page-not-found-tracker
+- License: MIT
