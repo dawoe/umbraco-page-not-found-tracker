@@ -15,7 +15,7 @@
     <PackageReference Include="Umbraco.Cms.Core" />
   </ItemGroup>
 
-  <ItemGroup>    
+  <ItemGroup>
     <PackageReference Include="StyleCop.Analyzers">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -29,13 +29,12 @@
   <PropertyGroup>
       <Authors>Dave Woestenborghs and contributors</Authors>
       <Product>Umbraco.Community.PageNotFoundTracker</Product>
-      <Company>Umbraco Community</Company>
+      <Company>Umbraco community</Company>
       <PackageProjectUrl>https://github.com/dawoe/umbraco-page-not-found-tracker</PackageProjectUrl>
       <RepositoryUrl>https://github.com/dawoe/umbraco-page-not-found-tracker</RepositoryUrl>
       <PackageIconUrl />
       <PackageIcon>logo.png</PackageIcon>
       <PackageReadmeFile>readme.md</PackageReadmeFile>
-      <PackageLicenseExpression>MIT</PackageLicenseExpression>
       <Description>Records requests that end in a 404 and lets editors turn tracked URLs into redirects or block them.</Description>
       <PackageTags>umbraco, umbraco-marketplace</PackageTags>
       <RepositoryType>git</RepositoryType>
@@ -50,8 +49,8 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
-	
-	<ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>$(AssemblyName).Tests</_Parameter1>
     </AssemblyAttribute>
