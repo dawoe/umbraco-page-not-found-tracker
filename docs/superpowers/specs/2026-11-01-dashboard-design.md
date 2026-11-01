@@ -190,6 +190,10 @@ These are the writer's calls, not decisions the user made:
   the database. Changing the spec 1 workflow for that is in scope.
 - The API returns `FirstSeen` and `LastSeen` as UTC ISO 8601 timestamps. The backoffice
   formats them in the user's locale and timezone, and sorting uses the raw values.
+- Relative path (added after the cross-spec review): list items also carry the `RelativePath`
+  from spec 3, which row actions in specs 5 and 6 use. It is not a column.
+- When persistence is unavailable (spec 3), the dashboard shows a readable "database
+  unsupported or unavailable" state and the endpoints return a clear error.
 
 ## Acceptance
 

@@ -103,13 +103,15 @@ DI, as with the resolver in spec 2.
 - Supports pages only. Tracked URLs flagged as files are not supported.
 - Payload: the key of the target content page.
 - Creates the redirect through `IRedirectUrlService`, so Umbraco applies and lists it.
-- Mapping from the tracked record to Umbraco's redirect format. Umbraco stores a redirect
-  as a route that starts with the ID of the domain's root node, plus a culture. The record
-  stores the full path including any alias prefix (such as `/siteA`) and the domain name as
-  configured. The provider finds the domain by name, takes its root node, removes the
-  domain's own path from the stored path, and builds the route. A record with no domain
-  uses the first root node, as in spec 2. If a domain or root cannot be found, the
-  provider fails with a clear message and nothing changes.
+- Mapping from the tracked record to Umbraco's redirect format. Umbraco looks a redirect up by
+  route. For a request that matched a domain, the route is the ID of that domain's root node
+  followed by the path relative to the domain. For a request that matched no domain, the route is
+  the bare path. The builder verifies both forms against Umbraco 17, in particular the no-domain
+  form, because `single-site` may have no configured domain. The record carries `Domain`,
+  `Culture` and the `RelativePath` from spec 3. With a non-empty `Domain` the provider finds the
+  domain by name, takes its root node and builds the route from the root ID and `RelativePath`.
+  With an empty `Domain` it builds the bare route from `RelativePath`. If a domain or root cannot
+  be found, the provider fails with a clear message and nothing changes.
 - Culture is taken from the record. A record with no culture uses the culture-invariant
   form.
 - If a redirect already exists for the same route and culture, the provider replaces its
@@ -150,8 +152,9 @@ DI, as with the resolver in spec 2.
 - Deleting removes the tracked record from the database.
 - Spec 3 queues hits in memory before they are written. To stop a queued hit from writing
   the record back at the next flush, the tracker gets a way to discard queued entries for a
-  URL identity. This is best effort within the current server. On other servers, a hit
-  already queued can still bring the record back once. This is accepted.
+  URL identity. This is best effort within the current server. On other servers, a hit already queued can still bring the record back once. This is accepted
+  in this spec. Spec 6 adds cross-server discarding through its cache refresher, and that
+  mechanism may be applied to this action as well.
 - If the provider succeeded but deleting the record fails, the editor is told the redirect
   was created and the record could not be removed. The failure is logged. The record stays,
   and since the URL now redirects, its count stops growing.
@@ -196,8 +199,7 @@ These are the writer's calls, not decisions the user made:
   same as in spec 3 (normalised URL, domain and culture).
 - Domain mapping: the provider reuses spec 2's domain resolution code where it can, which
   may move shared code into `.Core`. When several Umbraco domains share a name, the
-  record's culture picks one. No match means failure with a clear message. A stored path
-  that does not start with the domain's own path is used as is.
+  record's culture picks one. No match means failure with a clear message. The path used is `RelativePath` from spec 3, so no prefix stripping happens here.
 - The "supported" flag depends only on the record itself (page or file, and whether a
   query string is present and honoured by Umbraco), never on a per-row database or domain
   lookup, so a page of 100 rows stays cheap. A mapping problem shows up as a readable error

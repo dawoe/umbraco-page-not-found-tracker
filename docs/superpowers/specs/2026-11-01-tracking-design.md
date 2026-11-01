@@ -122,13 +122,14 @@ One table with one row per URL identity:
 | Field | Meaning |
 |-------|---------|
 | Id | Primary key |
-| Url | Normalised identity form of the URL |
+| Url | Normalised identity form of the URL (full path as requested) |
+| RelativePath | Normalised path relative to the matched domain, without query string, indexed (see calls) |
 | DisplayUrl | First-seen spelling |
 | Domain | Matched domain, or empty |
 | Culture | Culture, or empty |
 | IsFile | Whether the request was for a file |
 | HitCount | Number of 404s |
-| FirstSeen / LastSeen | UTC timestamps |
+| FirstSeen / LastSeen | UTC `DateTime` values (not `DateTimeOffset`, which SQLite cannot order reliably) |
 
 A unique index covers the identity (Url, Domain, Culture). SQL Server limits index key size,
 so URL length handling (truncation, or an additional hash column) is left to the builder
@@ -194,12 +195,14 @@ pending model changes, so the two migration sets cannot drift apart.
   `docker run` command and the connection string. The site installs itself on first run
   through the unattended install settings, so no database file is committed. This relaxes
   the "no database server other than SQLite" non-goal from spec 1 for this purpose only.
-  The profile has the single-site shape and also has Umbraco MCP configured, as the others
-  do.
+  The profile has the single-site shape. It does not configure MCP and has no 404 page content, and
+  tracking needs neither.
 - Integration tests apply the migrations on SQLite and on SQL Server. In CI, SQL Server
   runs as a service container on the GitHub runner. Locally, the same tests use the Docker
   container and are skipped with a clear message if no connection is configured.
-- PR validation gets the SQL Server service container and the pending-model-changes check.
+- PR validation, the beta workflow and the release workflow all get the SQL Server service
+  container and the pending-model-changes check, so the integration tests run on SQL Server
+  everywhere and the three workflows stay in step.
 
 ## Testing
 
@@ -228,7 +231,10 @@ These are the writer's calls, not decisions the user made:
 - No retention or clean-up in this spec.
 - Startup order: migrations run only once Umbraco's runtime level is `Run`, so after
   Umbraco's own install has finished. If the runtime level is lower (for example during
-  install), the package logs it and does nothing until the next start. It never creates
+  install), the package waits for the level to become `Run` within the same run and then
+  migrates. Migrations having completed is exposed as an awaitable startup gate that later specs
+  wait on (spec 6's first rule load). If Umbraco restarts after installing, the gate is rebuilt
+  on that start. It never creates
   the database itself.
 - Connection: the connection string and provider name are read from Umbraco's own
   connection string configuration, and the `|DataDirectory|` token is resolved the way
@@ -255,9 +261,33 @@ These are the writer's calls, not decisions the user made:
 - Tracking does not depend on a resolved 404 page. A 404 where spec 2 resolved nothing is
   tracked the same way.
 - The `sql-server` profile installs the Clean starter kit through the normal unattended
-  install, like the other profiles, so a 404 page exists once spec 2's test content is
-  added. Missing-page tracking works without it.
+  install. It has no MCP user and no 404 page content, because both live in the committed
+  databases of the four SQLite profiles. Missing-page tracking works without a 404 page.
 - Settings are read once at startup. Changing them needs a restart.
+- Relative path (added after the cross-spec review): each record also stores `RelativePath`,
+  the request path with the matched domain's own path removed (case-insensitive), normalised
+  like `Url`, without the query string, and indexed. With no matched domain it equals the
+  normalised path. It is computed when the 404 is recorded. Records keep the value computed
+  then, even if domains are edited later. Specs 4 to 6 use it for display, redirect mapping,
+  rule matching and rule deletes, so none of them has to repeat prefix stripping or fight the
+  query string. It is not part of the unique identity.
+- "File" in the `IsFile` column means the last segment of the request path has a file
+  extension, in both code paths, as defined in spec 2.
+- Discarding queued hits (needed by specs 5 and 6): the flush drains the channel into an
+  in-memory merge buffer under a lock. The tracker exposes a discard operation over that
+  buffer, the retry buffer and the batch in flight, taking either an identity or, for spec 6,
+  a path pattern with a domain and culture scope. The discard and the flush are serialised so
+  they cannot interleave. A channel itself cannot remove items, which is why the buffer exists.
+- Persistence availability: the package has one state, "persistence available", true only
+  when a provider matched and migrations completed. When it is false, tracking is off, the
+  dashboards and endpoints of specs 4 to 6 report a clear "database unsupported or
+  unavailable" state, and blocking passes requests through with a logged reason.
+- Later specs add tables (spec 6 adds the block rule table). A custom provider must include
+  migrations for all package tables. The provider documentation says so, and adding a table
+  in a later version is a change implementers have to follow.
+- Committed SQLite databases hold no tracked rows. Running the site dirties them (migrations,
+  WAL), and contributors reset them with `git checkout`, as spec 1 documents for other
+  incidental changes. E2E runs that create tracked data must never commit it.
 
 ## Acceptance
 

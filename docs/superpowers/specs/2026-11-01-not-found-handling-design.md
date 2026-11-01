@@ -47,7 +47,10 @@ Spec 3 builds tracking on top of it.
 
 - Umbraco 17.x on .NET 10, in the solution layout from spec 1: contracts and settings in
   `.Core`, middleware, finder and default resolver in `.Infrastructure`, registration in the
-  composer, `UsePageNotFoundTracker()` on `WebApplication` as the pipeline hook.
+  composer, `UsePageNotFoundTracker()` on `WebApplication` as the pipeline hook. That one call registers every
+  middleware the package needs at the right positions: this spec's file handling sits after the
+  static file middleware, while spec 6 needs one ahead of routing and static files. The builder
+  uses an Umbraco pipeline filter or equivalent so a consuming site still adds a single call.
 - Settings under `Umbraco:Community:PageNotFoundTracker` in `appsettings.json`, bound to a
   settings class in `.Core`. This spec adds the section for the 404 page alias. Names of
   further settings are the builder's call but follow the same section.
@@ -169,16 +172,20 @@ These are the writer's calls, not decisions the user made:
 - File handling applies to GET and HEAD requests only. Every extension is covered, including
   images and scripts (decided with the user), and the `Accept` header is not used to
   narrow it. Missing media files under `/media` get the 404 page too. Umbraco-owned paths
-  (backoffice, Management API, `/umbraco`, `/App_Plugins`, `/_framework`) and
-  `/.well-known` are excluded. The builder finalises the list and documents it.
+  (backoffice, Management API, `/umbraco`, `/App_Plugins`, `/_framework`) are excluded. The list is
+  public shared code in `.Core` from the start, because spec 6 reuses it. `/.well-known` is excluded
+  from file handling only. It is not on the shared list and can still be blocked by spec 6.
+  The builder finalises the list and documents it.
 - Order against the built-in finder: the package's last-chance step runs first. If it
   returns nothing, Umbraco's built-in logic (including `ContentFinderByConfigured404` and any
   site-level status code middleware) runs as before. The package does not remove the built-in
   finder.
 - Signal for spec 3: each of the two code paths ends in one internal call point that
-  receives the original request URL (path and query), the matched domain (or none), the
-  culture, whether the request was for a page or a file, and whether a 404 page was
-  resolved. Spec 3 decides what to do with it. This spec only guarantees the call point
+  receives the original request URL (path and query), the matched domain (or none), the culture of the
+  matched domain (or none: the default-language fallback is used only to choose the 404 page
+  variant and is not reported), whether the request was for a page or a file, and whether a 404 page
+  was resolved. "File" means the last segment of the request path has a file extension, in both code
+  paths, so a missing `/x.pdf` is flagged as a file whichever path caught it. Spec 3 decides what to do with it. This spec only guarantees the call point
   exists and carries that context.
 - The package ships no document type. The test site provides the 404 page document type
   and pages. If the Clean starter kit lacks a suitable type, the builder adds one to the

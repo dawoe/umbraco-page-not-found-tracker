@@ -22,7 +22,8 @@ The first release targets **Umbraco 17.x (LTS) on .NET 10**.
 | 3 | Tracking of 404 URLs | 2 |
 | 4 | Backoffice dashboard for tracked URLs | 3 |
 | 5 | Redirect creation | 4 |
-| 6 | Blocked URLs | 4 |
+| 6 | Blocked URLs | 5 |
+| 7 | Documentation for implementers | 1 to 6 |
 
 Every spec is a file in `docs/superpowers/specs/` with a matching GitHub issue. The issue
 holds a short summary, a link to the spec on `develop`, an acceptance checklist and links to

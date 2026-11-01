@@ -97,10 +97,11 @@ Umbraco redirect from spec 5, the block wins.
 - Patterns are relative to the domain root. For a site told apart by an alias path, such as
   `localhost/siteA`, the domain's own path (`/siteA`) is removed from the request path
   before matching. So `/wp-admin/*` for all domains also blocks `/siteA/wp-admin/x` and
-  `/siteB/wp-admin/x`. The row's "Block" action therefore preselects the path relative to
-  its domain, derived the same way as in spec 5's mapping, not the full stored path. The
-  prefixes to strip come from Umbraco's configured domains, kept in the snapshot, so no
-  database or domain lookup happens per request.
+  `/siteB/wp-admin/x`. The row's "Block" action therefore preselects the record's `RelativePath` from spec 3, not the full
+  stored path. The prefixes to strip come from Umbraco's configured domains, kept in the snapshot, so no database
+  or domain lookup happens per request. The snapshot is also rebuilt whenever Umbraco's domains or
+  languages change (through the matching Umbraco notifications), not only when a rule changes, so
+  alias stripping and domain scoping never go stale.
 - A culture-scoped rule only matches requests whose matched domain has that culture. A
   request with no matched domain never matches a culture-scoped rule, and matches a
   domain-scoped rule never. Only all-domains, all-cultures rules apply to it.
@@ -142,8 +143,8 @@ risk. Two safeguards:
 
 - Umbraco-owned paths are never blocked and rules do not match them: the backoffice, the
   Management API, `/umbraco`, `/App_Plugins`, `/_framework` and the other paths that spec 2
-  excludes. The list is shared code in `.Core`, used by spec 2 and by this spec, so the
-  builder makes spec 2's list public to the package. A rule whose pattern overlaps one of
+  excludes. The list is the public shared code in `.Core` that spec 2 provides, used by both specs. `/.well-known`
+  is not on it, so it can be blocked. A rule whose pattern overlaps one of
   these paths is rejected when it is created, with a message naming the path, rather than
   accepted and ignored.
 - A pattern must contain at least one literal character besides slashes and wildcards, so
@@ -163,9 +164,10 @@ states that rules apply to every matching request, not only to missing pages.
   within the rule's domain and culture scope whose path matches. Queued hits that match are
   discarded, using the mechanism from spec 5 (extended to patterns) and serialised with the
   flush as in spec 5.
-- Deleting must match the same records on SQLite and SQL Server. The builder decides how
-  the pattern is translated to the database, with literal `%`, `_` and `[` handled, as in
-  spec 4's search.
+- Deleting matches the pattern against the `RelativePath` column from spec 3, so alias prefixes and
+  query strings need no special handling. It must match the same records on SQLite and SQL Server.
+  The builder decides how the pattern is translated to a database query, with literal `%`, `_` and
+  `[` handled, as in spec 4's search.
 - With `IncludeQueryString` on, tracked records carry a query string. The row's "Block"
   action preselects the path without it, creating a rule deletes every matching record
   whatever its query string, and the queued hit discard compares on the path only.
@@ -194,7 +196,10 @@ states that rules apply to every matching request, not only to missing pages.
   An empty domain or culture shows a localized "all domains" or "all cultures" label.
 - Rows are entities of a new entity type, with the "Unblock" entity action. The collection
   has the "Add rule" action.
-- Endpoints: list, create and delete, in the same OpenAPI document as specs 4 and 5.
+- Endpoints: list, create and delete, plus one that lists the domains and cultures configured in Umbraco
+  for the rule dialog (the values from spec 4's filter endpoint only cover URLs that already had a
+  404, so a rule for a domain without any tracked 404 could not be chosen), in the same OpenAPI
+  document as specs 4 and 5.
   Responses distinguish: created, invalid pattern or status with a message, not found.
   Exact routes and models are left to the builder.
 
@@ -260,6 +265,11 @@ These are the writer's calls, not decisions the user made:
   creation.
 - Rule uniqueness is on the normalised pattern.
 - Other servers discard their own matching queued hits when the refresher fires.
+- Persistence availability (spec 3): when no database provider matched or migrations did not
+  complete, blocking passes requests through with a logged reason, the dashboard shows an
+  "unsupported or unavailable" state and the endpoints return a clear error.
+- Strictly after spec 5: it reuses spec 5's discard mechanism, spec 3's `RelativePath` and the
+  list API changes from spec 4. It is not built in parallel with spec 5.
 
 ## Acceptance
 

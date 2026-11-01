@@ -105,9 +105,14 @@ the supported versions.
 
 - Requirements: Umbraco 17.x, .NET 10, supported databases (SQLite and SQL Server in the box).
 - Installing the NuGet package.
-- Adding `UsePageNotFoundTracker()` to `Program.cs`, in the right place in the pipeline.
+- Adding `UsePageNotFoundTracker()` to `Program.cs`, in the right place in the pipeline. That one
+  call registers the package's early middleware (blocking, ahead of routing and static files)
+  and its later middleware (file 404 handling), so the page explains the call position and that
+  there is only one call to add.
 - Creating the 404 page document type and a page, and the setting for its alias.
-- First run: the table is created by migrations when Umbraco has finished installing.
+- First run: the tables are created by migrations once Umbraco has finished installing and
+  reached runtime level `Run`, in the same run, or after the restart Umbraco does itself.
+  Say what a person sees when the installer UI is used and when unattended install is used.
 - Verifying: request a missing page and a missing file, wait for the flush, open the
   dashboard.
 - What happens with an unsupported database (tracking disabled with a logged error) and a
