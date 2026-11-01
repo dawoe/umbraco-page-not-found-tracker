@@ -151,10 +151,19 @@ that resolves to this machine. To use it:
    Linux/macOS `/etc/hosts`): `127.0.0.1 www.siteA.local www.siteB.local`
 2. Browsers warn about `.local` names with the default dev certificate (`dotnet dev-certs https
    --trust` covers `localhost` only). Click through, or use a certificate with SANs. Optional,
-   PowerShell: create it with `New-SelfSignedCertificate -DnsName localhost,www.siteA.local,www.siteB.local
-   -CertStoreLocation Cert:\CurrentUser\My`, export a pfx, trust it as a root certificate, then start
-   with env `Kestrel__Certificates__Default__Path=<pfx>` and `Kestrel__Certificates__Default__Password=<pw>`.
-   Do not commit the pfx.
+   PowerShell recipe (keep the pfx outside the repo and never commit it):
+
+   ```powershell
+   $cert = New-SelfSignedCertificate -DnsName localhost,www.siteA.local,www.siteB.local `
+       -CertStoreLocation Cert:\CurrentUser\My -FriendlyName 'PageNotFoundTracker test'
+   $pw = ConvertTo-SecureString 'test-only' -AsPlainText -Force
+   Export-PfxCertificate -Cert $cert -FilePath C:\certs\pnft-test.pfx -Password $pw
+   # Trust it (opens a Windows confirmation prompt):
+   Import-PfxCertificate -FilePath C:\certs\pnft-test.pfx -CertStoreLocation Cert:\CurrentUser\Root -Password $pw
+   # Start the profile from this same shell (not launchSettings.json):
+   $env:Kestrel__Certificates__Default__Path = 'C:\certs\pnft-test.pfx'
+   $env:Kestrel__Certificates__Default__Password = 'test-only'
+   ```
 3. Without editing hosts you can still test with `curl -k --resolve www.siteA.local:44404:127.0.0.1
    https://www.siteA.local:44404/about`.
 
@@ -291,6 +300,12 @@ Finish every profile:
   `--version-suffix beta-<run number>`, push to MyGet feed `dawoe-umbraco`.
 - `release.yml` (manual `workflow_dispatch`, runs only from `main`): build, test, pack, publish to
   NuGet.org through OIDC (`NuGet/login`), `--skip-duplicate`.
+- After releasing a version from `main`, bump `VersionPrefix` (and `AssemblyVersion`) in
+  `src/Directory.Build.props` on `develop`; otherwise betas such as `17.0.0-beta-N` sort below the
+  released `17.0.0`.
+- Known limitation: NuGet compares the prerelease label as a string, so `beta-10` sorts below `beta-9`
+  and MyGet's "latest prerelease" is only reliable up to run 9 with `beta-<n>`. Changing the suffix to
+  `beta.<n>` in `beta-release.yml` fixes it (left unchanged for the maintainer to decide).
 - Secrets that must exist (maintainer creates them, never this repo): `MYGET_API_KEY` and `NUGET_USER`
   (NuGet.org username, plus a trusted publishing policy for this repository and `release.yml` on NuGet.org).
 - Repository settings: default branch `develop`, release branch `main`.
@@ -301,8 +316,9 @@ Finish every profile:
 
 - `src/.editorconfig` and `src/stylecop.json` are authoritative. Analyzer warnings must be fixed, not
   suppressed (zero warnings).
-- Every file starts with the StyleCop header:
-  `// <copyright file="X.cs" company="Umbraco community">` / copyright line / `// </copyright>`.
+- Every file starts with the single-line StyleCop header
+  `// Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.`
+  (the `copyrightText` in `src/stylecop.json`).
 - Usings outside the namespace, file-scoped namespaces, braces always.
 - XML documentation on all public and internal members.
 - Service registration through `IUmbracoBuilder` extension methods plus an `IComposer`.
