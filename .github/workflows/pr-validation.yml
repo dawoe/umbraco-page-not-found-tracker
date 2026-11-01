@@ -1,0 +1,119 @@
+name: PR validation
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+env:
+  BUILD_CONFIG: 'Release'
+  NuGetDirectory: ${{ github.workspace }}/nuget
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.13.1'
+
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: NPM install
+        run: npm ci
+        working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
+
+      - name: NPM build
+        run: npm run build
+        working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
+
+      - name: Restore
+        run: dotnet restore
+        working-directory: src/
+
+      - name: Build
+        run: dotnet build -c ${{ env.BUILD_CONFIG }} --no-restore
+        working-directory: src/
+
+      - name: Test
+        run: dotnet test -c ${{ env.BUILD_CONFIG }} --no-restore --no-build /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura
+        working-directory: src/
+
+      # Every PR proves the package can be packed and is complete.
+      # No --no-build: pack at solution level fails with NETSDK1085 (a referenced project invokes Build).
+      # The earlier Release build makes this an incremental no-op rebuild; the client build still runs first.
+      - name: Pack
+        run: dotnet pack -c ${{ env.BUILD_CONFIG }} --no-restore --output ${{ env.NuGetDirectory }}
+        working-directory: src/
+
+      - name: Check package content
+        shell: pwsh
+        run: ./.github/scripts/check-package.ps1 -PackageDirectory "${{ env.NuGetDirectory }}"
+
+      # E2E against the committed single-site scenario database (unattended install is a no-op).
+      - name: E2E install dependencies
+        run: npm ci
+        working-directory: src/test/Umbraco.Community.PageNotFoundTracker.E2E
+
+      - name: E2E install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: src/test/Umbraco.Community.PageNotFoundTracker.E2E
+
+      # Kestrel needs a certificate for the https endpoint. On Linux the dev cert cannot be
+      # trusted, so it is only created; Playwright uses ignoreHTTPSErrors and curl uses -k.
+      - name: Create dev certificate
+        run: dotnet dev-certs https
+
+      - name: Start test site
+        run: |
+          nohup dotnet run --no-build -c ${{ env.BUILD_CONFIG }} --launch-profile single-site > "$RUNNER_TEMP/site.log" 2>&1 &
+        working-directory: test-sites/Website-V17
+
+      - name: Wait for test site
+        run: |
+          for i in $(seq 1 60); do
+            if curl -ksf -o /dev/null https://localhost:44401/; then
+              echo "Site is up after $((i * 2)) seconds"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Site did not start within 2 minutes. Site log follows."
+          cat "$RUNNER_TEMP/site.log"
+          exit 1
+
+      - name: E2E tests
+        run: npm run test:e2e
+        working-directory: src/test/Umbraco.Community.PageNotFoundTracker.E2E
+        env:
+          UMBRACO_URL: https://localhost:44401
+          UMBRACO_USER_LOGIN: admin@example.com
+          UMBRACO_USER_PASSWORD: '1234567890'
+
+      - name: Upload Playwright results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            src/test/Umbraco.Community.PageNotFoundTracker.E2E/test-results
+            src/test/Umbraco.Community.PageNotFoundTracker.E2E/playwright-report
+
+      - name: Upload site log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-log
+          if-no-files-found: ignore
+          retention-days: 14
+          path: ${{ runner.temp }}/site.log

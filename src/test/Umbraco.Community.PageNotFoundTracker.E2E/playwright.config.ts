@@ -18,6 +18,7 @@ export default defineConfig({
   timeout: 60 * 1000,
   expect: { timeout: 10 * 1000 },
   fullyParallel: false,
+  forbidOnly: !!process.env.CI,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['github']] : 'list',
@@ -39,7 +40,6 @@ export default defineConfig({
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
-        ignoreHTTPSErrors: true,
         storageState: STORAGE_STATE,
       },
     },
