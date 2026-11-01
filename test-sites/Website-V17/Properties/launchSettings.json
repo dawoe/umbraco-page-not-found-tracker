@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "single-site": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:44401;http://localhost:44301",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ConnectionStrings__umbracoDbDSN": "Data Source=|DataDirectory|/single-site.sqlite.db;Cache=Shared;Foreign Keys=True;Pooling=True",
+        "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.Sqlite",
+        "Umbraco__CMS__Unattended__InstallUnattended": "true",
+        "Umbraco__CMS__Unattended__UnattendedUserName": "Test Admin",
+        "Umbraco__CMS__Unattended__UnattendedUserEmail": "admin@example.com",
+        "Umbraco__CMS__Unattended__UnattendedUserPassword": "1234567890"
+      }
+    }
+  }
+}

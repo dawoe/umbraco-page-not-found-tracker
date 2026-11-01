@@ -32,7 +32,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="$(BackOfficeProjectDir)wwwroot/**" Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
+    <StaticWebAssetDiscoveryPattern Include="$(MSBuildProjectName)\BackOfficeWwwroot">
+      <Source>$(MSBuildProjectName)</Source>
+      <BasePath>/</BasePath>
+      <ContentRoot>$(BackOfficeProjectDir)wwwroot\</ContentRoot>
+      <Pattern>**</Pattern>
+    </StaticWebAssetDiscoveryPattern>
   </ItemGroup>
 
   <Target Name="BundleReferencedProjectAssemblies" DependsOnTargets="ResolveReferences">
