@@ -4,11 +4,59 @@
     "single-site": {
       "commandName": "Project",
       "dotnetRunMessages": true,
-      "launchBrowser": true,
+      "launchBrowser": false,
       "applicationUrl": "https://localhost:44401;http://localhost:44301",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ConnectionStrings__umbracoDbDSN": "Data Source=|DataDirectory|/single-site.sqlite.db;Cache=Shared;Foreign Keys=True;Pooling=True",
+        "ConnectionStrings__umbracoDbDSN": "Data Source=|DataDirectory|/single-site.sqlite.db;Foreign Keys=True;Pooling=True",
+        "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.Sqlite",
+        "Umbraco__CMS__Unattended__InstallUnattended": "true",
+        "Umbraco__CMS__Unattended__UnattendedUserName": "Test Admin",
+        "Umbraco__CMS__Unattended__UnattendedUserEmail": "admin@example.com",
+        "Umbraco__CMS__Unattended__UnattendedUserPassword": "1234567890"
+      }
+    }
+,
+    "multi-site-aliases": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:44402;http://localhost:44302",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ConnectionStrings__umbracoDbDSN": "Data Source=|DataDirectory|/multi-site-aliases.sqlite.db;Foreign Keys=True;Pooling=True",
+        "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.Sqlite",
+        "Umbraco__CMS__Unattended__InstallUnattended": "true",
+        "Umbraco__CMS__Unattended__UnattendedUserName": "Test Admin",
+        "Umbraco__CMS__Unattended__UnattendedUserEmail": "admin@example.com",
+        "Umbraco__CMS__Unattended__UnattendedUserPassword": "1234567890"
+      }
+    }
+,
+    "multi-language": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:44403;http://localhost:44303",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ConnectionStrings__umbracoDbDSN": "Data Source=|DataDirectory|/multi-language.sqlite.db;Foreign Keys=True;Pooling=True",
+        "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.Sqlite",
+        "Umbraco__CMS__Unattended__InstallUnattended": "true",
+        "Umbraco__CMS__Unattended__UnattendedUserName": "Test Admin",
+        "Umbraco__CMS__Unattended__UnattendedUserEmail": "admin@example.com",
+        "Umbraco__CMS__Unattended__UnattendedUserPassword": "1234567890"
+      }
+    }
+,
+    "multi-site-hostnames": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:44404;http://localhost:44304",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ConnectionStrings__umbracoDbDSN": "Data Source=|DataDirectory|/multi-site-hostnames.sqlite.db;Foreign Keys=True;Pooling=True",
         "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.Sqlite",
         "Umbraco__CMS__Unattended__InstallUnattended": "true",
         "Umbraco__CMS__Unattended__UnattendedUserName": "Test Admin",
