@@ -101,6 +101,12 @@ Packing facts:
   transitively. A new `PackageReference` in Infrastructure or BackOffice must be mirrored in the
   entry csproj (as `Umbraco.Cms.Api.Management` is) or consumers will miss it.
 - Known gap: the sibling pdbs are not in the `snupkg`.
+- **KNOWN ISSUE (found by the clean-clone check, remove this note when fixed):** in a fresh clone, `dotnet pack`
+  produces a nupkg WITHOUT `staticwebassets/App_Plugins/PageNotFoundTracker/*` and `check-package.ps1` fails. The
+  entry csproj uses a `StaticWebAssetDiscoveryPattern` (good for running the test site through the project
+  reference), but that only feeds consumers; the pack manifest (`obj/<cfg>/net10.0/staticwebassets.pack.json`)
+  is then never generated. A working copy that once had that file in `obj/` packs fine, which hides the problem.
+  CI runs on a clean checkout, so expect the pack check there to fail until the entry csproj is fixed.
 
 ## Launch profiles
 
@@ -313,6 +319,8 @@ Finish every profile:
 
 ## Gotchas
 
+- On Windows keep the checkout path short (for example `C:orks...`). In a clone under a very long path
+  (the harness scratch directory) the solution build failed with MSB3030 on `Core.dll` although each project built alone.
 - The client build must run before `dotnet build`/`dotnet pack`; `App_Plugins` is gitignored.
 - `UsePageNotFoundTracker()` goes after `BootUmbracoAsync()` and before `UseUmbraco()` in `Program.cs`
   (see the test site). It does nothing yet and is safe in any position.
