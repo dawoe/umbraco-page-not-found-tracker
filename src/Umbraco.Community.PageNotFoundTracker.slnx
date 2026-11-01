@@ -11,4 +11,14 @@
   <Folder Name="/_BuildProps/test/">
     <File Path="test/Directory.Build.props" />
   </Folder>
+  <Folder Name="/code/">
+    <Project Path="code/Umbraco.Community.PageNotFoundTracker/Umbraco.Community.PageNotFoundTracker.csproj" />
+    <Project Path="code/Umbraco.Community.PageNotFoundTracker.Core/Umbraco.Community.PageNotFoundTracker.Core.csproj" />
+    <Project Path="code/Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
+    <Project Path="code/Umbraco.Community.PageNotFoundTracker.BackOffice/Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests.csproj" />
+    <Project Path="test/Umbraco.Community.PageNotFoundTracker.BackOffice.Tests/Umbraco.Community.PageNotFoundTracker.BackOffice.Tests.csproj" />
+  </Folder>
 </Solution>
