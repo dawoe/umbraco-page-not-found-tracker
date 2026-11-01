@@ -101,12 +101,14 @@ Packing facts:
   transitively. A new `PackageReference` in Infrastructure or BackOffice must be mirrored in the
   entry csproj (as `Umbraco.Cms.Api.Management` is) or consumers will miss it.
 - Known gap: the sibling pdbs are not in the `snupkg`.
-- **KNOWN ISSUE (found by the clean-clone check, remove this note when fixed):** in a fresh clone, `dotnet pack`
-  produces a nupkg WITHOUT `staticwebassets/App_Plugins/PageNotFoundTracker/*` and `check-package.ps1` fails. The
-  entry csproj uses a `StaticWebAssetDiscoveryPattern` (good for running the test site through the project
-  reference), but that only feeds consumers; the pack manifest (`obj/<cfg>/net10.0/staticwebassets.pack.json`)
-  is then never generated. A working copy that once had that file in `obj/` packs fine, which hides the problem.
-  CI runs on a clean checkout, so expect the pack check there to fail until the entry csproj is fixed.
+- The client bundle is a static web asset of the entry project, not of BackOffice (BackOffice has
+  `StaticWebAssetsEnabled=false`). The entry csproj links the BackOffice `wwwroot/**` in as `Content` under
+  `wwwroot/` with `ContentRoot` metadata pointing at the BackOffice `wwwroot`. That one item feeds both the
+  project-reference case (the test site) and the pack manifest (`obj/<cfg>/net10.0/staticwebassets.pack.json`).
+  Without the `ContentRoot` metadata the asset paths point at the entry project's own (non-existent) `wwwroot`
+  and the site crashes on start; with `CopyToPublishDirectory=Never` the assets become Build-only and pack
+  silently drops them; a `StaticWebAssetDiscoveryPattern` alone defines no assets, so nothing is packed.
+- Verify pack changes in a fresh clone: a stale `staticwebassets.pack.json` in `obj/` can hide a broken setup.
 
 ## Launch profiles
 
@@ -319,13 +321,13 @@ Finish every profile:
 
 ## Gotchas
 
-- On Windows keep the checkout path short (for example `C:orks...`). In a clone under a very long path
+- On Windows keep the checkout path short (for example `C:\forks\...`). In a clone under a very long path
   (the harness scratch directory) the solution build failed with MSB3030 on `Core.dll` although each project built alone.
 - The client build must run before `dotnet build`/`dotnet pack`; `App_Plugins` is gitignored.
 - `UsePageNotFoundTracker()` goes after `BootUmbracoAsync()` and before `UseUmbraco()` in `Program.cs`
   (see the test site). It does nothing yet and is safe in any position.
-- Project-reference use of the entry package depends on a `StaticWebAssetDiscoveryPattern` in the entry
-  csproj that points at the BackOffice `wwwroot`; linked `Content` items broke the site at startup.
+- Project-reference use and packing of the client bundle both depend on the linked `Content` item with
+  `ContentRoot` metadata in the entry csproj (see Packing facts); keep that metadata.
 - Umbraco 17.8.0 strips `Cache=Shared` from the SQLite connection string on every start, so the profiles
   omit it.
 - `clean` 7.0.8 is the Clean starter kit version that pairs with Umbraco 17; 8.x needs Umbraco 18.

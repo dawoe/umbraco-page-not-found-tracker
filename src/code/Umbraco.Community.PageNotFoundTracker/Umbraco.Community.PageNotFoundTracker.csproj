@@ -6,9 +6,14 @@
       * The ProjectReferences use PrivateAssets=all, so the nuspec gets no dependency on sibling packages.
       * BundleReferencedProjectAssemblies adds the assemblies (dll, xml docs) of all referenced projects
         (including the transitive Core) to lib/net10.0 of this package.
-      * This project is a Razor SDK project itself and links the BackOffice wwwroot (built client bundle) in as
-        its own static web assets, so the package carries staticwebassets/App_Plugins/PageNotFoundTracker/*
-        plus the build/*.props that make a consuming site serve /App_Plugins/PageNotFoundTracker/entry-point.js.
+      * This project is a Razor SDK project itself and owns the BackOffice wwwroot (built client bundle) as its
+        own static web assets (BackOffice has StaticWebAssetsEnabled=false). The files are linked in as Content
+        under wwwroot/ with ContentRoot metadata pointing at the BackOffice wwwroot, so ResolveProjectStaticWebAssets
+        defines real StaticWebAsset items for them (correct file paths for a project-referencing site, and the
+        pack manifest staticwebassets.pack.json is generated). The package therefore carries
+        staticwebassets/App_Plugins/PageNotFoundTracker/* plus the build/*.props that make a consuming site serve
+        /App_Plugins/PageNotFoundTracker/entry-point.js. Do not set CopyToPublishDirectory=Never on these items:
+        that turns them into Build-only assets, which the pack step skips.
       * The Umbraco.Cms.Api.Management reference mirrors the dependency of BackOffice, which is no longer a package.
       * EnsureClientBundleBuiltBeforePack fails pack when the client bundle has not been built.
   -->
@@ -16,6 +21,7 @@
   <PropertyGroup>
     <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
     <BackOfficeProjectDir>$(MSBuildThisFileDirectory)../Umbraco.Community.PageNotFoundTracker.BackOffice/</BackOfficeProjectDir>
+    <BackOfficeWwwroot>$([System.IO.Path]::GetFullPath('$(BackOfficeProjectDir)wwwroot/'))</BackOfficeWwwroot>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);BundleReferencedProjectAssemblies</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
 
@@ -29,15 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
-  </ItemGroup>
-
-  <ItemGroup>
-    <StaticWebAssetDiscoveryPattern Include="$(MSBuildProjectName)\BackOfficeWwwroot">
-      <Source>$(MSBuildProjectName)</Source>
-      <BasePath>/</BasePath>
-      <ContentRoot>$(BackOfficeProjectDir)wwwroot\</ContentRoot>
-      <Pattern>**</Pattern>
-    </StaticWebAssetDiscoveryPattern>
+    <Content Include="$(BackOfficeWwwroot)**" Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" ContentRoot="$(BackOfficeWwwroot)" />
   </ItemGroup>
 
   <Target Name="BundleReferencedProjectAssemblies" DependsOnTargets="ResolveReferences">
