@@ -73,6 +73,19 @@ public sealed class McpApiUserStartupHandler : INotificationAsyncHandler<Umbraco
             return;
         }
 
+        // Test convenience only: a failure here must never stop the site from booting.
+        try
+        {
+            await EnsureApiUserAsync(clientId, clientSecret);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MCP API user setup failed for client id {ClientId}; the site continues without it", clientId);
+        }
+    }
+
+    private async Task EnsureApiUserAsync(string clientId, string clientSecret)
+    {
         using IServiceScope scope = _scopeFactory.CreateScope();
         IUserService userService = scope.ServiceProvider.GetRequiredService<IUserService>();
         IBackOfficeUserClientCredentialsManager credentialsManager =
@@ -108,13 +121,15 @@ public sealed class McpApiUserStartupHandler : INotificationAsyncHandler<Umbraco
 
         Attempt<BackOfficeUserClientCredentialsOperationStatus> saved =
             await credentialsManager.SaveAsync(apiUser.Key, clientId, clientSecret);
+        // For this Attempt type, Result holds the operation status (also on failure).
+        BackOfficeUserClientCredentialsOperationStatus status = saved.Result;
         if (saved.Success)
         {
             _logger.LogInformation("Created MCP API user {Email} with client id {ClientId} (test-only)", ApiUserEmail, clientId);
         }
         else
         {
-            _logger.LogWarning("Could not add MCP client credentials {ClientId}: {Status}", clientId, saved.Result);
+            _logger.LogWarning("Could not add MCP client credentials {ClientId}: {Status}", clientId, status);
         }
     }
 }
