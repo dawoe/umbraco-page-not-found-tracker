@@ -1683,19 +1683,9 @@
       "umbraco.community.pagenotfoundtracker": {
         "type": "Project",
         "dependencies": {
-          "Umbraco.Cms.Core": "[17.8.0, 18.0.0)",
-          "Umbraco.Cms.Web.Website": "[17.8.0, 18.0.0)",
-          "Umbraco.Community.PageNotFoundTracker.BackOffice": "[17.0.0, )",
-          "Umbraco.Community.PageNotFoundTracker.Infrastructure": "[17.0.0, )"
-        }
-      },
-      "umbraco.community.pagenotfoundtracker.backoffice": {
-        "type": "Project",
-        "dependencies": {
           "Umbraco.Cms.Api.Management": "[17.8.0, 18.0.0)",
           "Umbraco.Cms.Core": "[17.8.0, 18.0.0)",
-          "Umbraco.Cms.Web.Website": "[17.8.0, 18.0.0)",
-          "Umbraco.Community.PageNotFoundTracker.Core": "[17.0.0, )"
+          "Umbraco.Cms.Web.Website": "[17.8.0, 18.0.0)"
         }
       },
       "umbraco.community.pagenotfoundtracker.core": {

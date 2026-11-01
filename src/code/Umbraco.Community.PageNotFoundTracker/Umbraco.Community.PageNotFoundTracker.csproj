@@ -1,8 +1,52 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!--
+    Single NuGet package: this project is the only packable one. Core, Infrastructure and BackOffice are
+    IsPackable=false and are bundled into this package instead of being published as sibling packages:
+      * The ProjectReferences use PrivateAssets=all, so the nuspec gets no dependency on sibling packages.
+      * BundleReferencedProjectAssemblies adds the assemblies (dll, xml docs) of all referenced projects
+        (including the transitive Core) to lib/net10.0 of this package.
+      * This project is a Razor SDK project itself and links the BackOffice wwwroot (built client bundle) in as
+        its own static web assets, so the package carries staticwebassets/App_Plugins/PageNotFoundTracker/*
+        plus the build/*.props that make a consuming site serve /App_Plugins/PageNotFoundTracker/entry-point.js.
+      * The Umbraco.Cms.Api.Management reference mirrors the dependency of BackOffice, which is no longer a package.
+      * EnsureClientBundleBuiltBeforePack fails pack when the client bundle has not been built.
+  -->
+
+  <PropertyGroup>
+    <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
+    <BackOfficeProjectDir>$(MSBuildThisFileDirectory)../Umbraco.Community.PageNotFoundTracker.BackOffice/</BackOfficeProjectDir>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);BundleReferencedProjectAssemblies</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
-    <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.BackOffice/Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" />
+    <PackageReference Include="Umbraco.Cms.Api.Management" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.BackOffice/Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="$(BackOfficeProjectDir)wwwroot/**" Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="BundleReferencedProjectAssemblies" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <_ReferencedProjectAssembly Include="@(ReferencePath)" Condition="'%(ReferencePath.MSBuildSourceProjectFile)' != ''" />
+      <_BundledFile Include="@(_ReferencedProjectAssembly)" />
+      <_BundledFile Include="@(_ReferencedProjectAssembly->'%(RootDir)%(Directory)%(Filename).xml')" Condition="Exists('%(RootDir)%(Directory)%(Filename).xml')" />
+      <TfmSpecificPackageFile Include="@(_BundledFile)" PackagePath="lib/$(TargetFramework)/" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="EnsureClientBundleBuiltBeforePack" BeforeTargets="_GetPackageFiles;GenerateNuspec;Pack">
+    <Error Condition="!Exists('$(BackOfficeProjectDir)wwwroot/App_Plugins/PageNotFoundTracker/entry-point.js')"
+           Text="Cannot pack: the backoffice client bundle is missing (src/code/Umbraco.Community.PageNotFoundTracker.BackOffice/wwwroot/App_Plugins/PageNotFoundTracker/entry-point.js). Run 'npm ci &amp;&amp; npm run build' in src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client first." />
+  </Target>
 
 </Project>
