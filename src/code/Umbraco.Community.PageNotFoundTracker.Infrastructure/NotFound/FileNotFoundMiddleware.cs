@@ -1,5 +1,7 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
@@ -29,14 +31,19 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 /// the request was neither recorded by the page path (<see cref="PageNotFoundLastChanceFinder"/>) nor handled here
 /// before. The keys in <see cref="NotFoundRequestItems"/> guarantee that a request is recorded and rendered once in
 /// total. Umbraco never routes a path with an extension to its content finders, so in practice the two code paths never
-/// see the same request.
+/// see the same request. Any bodyless 404 on such a path is replaced, also one produced by a site endpoint (an API
+/// returning <c>NotFound()</c> for <c>/api/x.json</c>); a 404 with a body written by an inner middleware or endpoint
+/// wins. The middleware must sit before <c>UseUmbraco()</c> (<c>UsePageNotFoundTracker()</c> after
+/// <c>BootUmbracoAsync()</c>); placed after it, it never sees the 404 of Umbraco's pipeline and file handling is inert.
 /// </para>
 /// <para>
 /// <b>Resolving and the signal.</b> The domain comes from <see cref="IRequestDomainMatcher"/> and is passed to the
 /// resolver. Every handled request is reported once to <see cref="INotFoundRecorder"/>, with <c>IsFile</c> true. When
 /// the resolver returns nothing or throws, the original 404 passes through unchanged. Exceptions of the resolver, the
 /// recorder and the rendering are logged and never turn the response into a 500; a cancellation because the visitor
-/// aborted the request is not logged as an error.
+/// aborted the request is not logged as an error. The occurrence is recorded before rendering (so Umbraco's second
+/// last-chance pass for a 404 page without a template cannot record it again); a render that then fails or is refused
+/// by authorization is still recorded with <c>PageResolved</c> true although the visitor gets the plain 404.
 /// </para>
 /// <para>
 /// <b>Render mechanism (spike result).</b> Umbraco renders a page only through endpoint routing
@@ -50,15 +57,26 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 /// context exists for the file request and its URL is the visitor's original URL.</description></item>
 /// <item><description><see cref="IPublishedRouter.CreateRequestAsync"/> for the original URL; the matched domain
 /// (<see cref="IPublishedRequestBuilder.SetDomain"/>), the 404 page as published content, the page's culture
-/// (<see cref="NotFoundPage.Culture"/>, set after the domain so it wins) and <c>SetIs404()</c>.
-/// Without a domain Umbraco's own domain lookup sets the culture, which is its default language, the same fallback the
-/// default resolver uses.</description></item>
+/// (<see cref="NotFoundPage.Culture"/>, set after the domain so it wins over the domain culture) and <c>SetIs404()</c>.
+/// Without a domain, Umbraco's own domain lookup in <c>RouteRequestAsync</c> overwrites the culture of the published
+/// request with its default language; the variation context used for rendering is therefore built from
+/// <see cref="NotFoundPage.Culture"/> when the resolver returned one, and from the published request's culture
+/// otherwise.</description></item>
 /// <item><description><see cref="IPublishedRouter.RouteRequestAsync"/>: the content is preset, so the content finders
 /// are skipped, but Umbraco still picks the template, handles wildcard domains, sets the variation context and raises
 /// its routing notification.</description></item>
 /// <item><description><see cref="IUmbracoRouteValuesFactory"/> creates the route values (template and hijacked controller
-/// lookup, as for any page); they are set as the <see cref="UmbracoRouteValues"/> feature and as the Umbraco context's
+/// lookup, as for any page). Then <see cref="IPublicAccessRequestHandler.RewriteForPublishedContentAccessAsync"/> runs,
+/// as on the page path: a protected 404 page is replaced by the protection's login or no-access page for a visitor
+/// without access. The result is set as the <see cref="UmbracoRouteValues"/> feature and as the Umbraco context's
 /// published request.</description></item>
+/// <item><description>An endpoint carrying the controller action's metadata (and its
+/// <see cref="Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor"/>) is set on the request, so MVC uses the
+/// endpoint-routing URL helper (<c>Url.Action</c>, <c>Html.ActionLink</c>, <c>asp-action</c> tag helpers work) and
+/// endpoint metadata is visible to filters. Because the authorization middleware has already run, the endpoint's
+/// authorization metadata (<c>[Authorize]</c> on a hijacked controller) is evaluated here with
+/// <see cref="IPolicyEvaluator"/>; when the visitor is not authorized, the plain 404 is returned instead of a
+/// challenge.</description></item>
 /// <item><description><see cref="IActionInvokerFactory"/> executes the controller action with those route values. The
 /// action, its filters (including Umbraco's filter that applies the 404 status) and the view result run as in any MVC
 /// request, so the template, partials, navigation and view components render with the 404 page as the current
@@ -71,7 +89,9 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 /// the 404 page's URL (as <c>UseStatusCodePagesWithReExecute</c> does) was rejected: Umbraco would route the 404 page's
 /// own URL (status 200, culture and domain from that URL, the Umbraco context URL no longer the original), and the
 /// 404 page needs a routable URL at all. A pre-rendered string was not an option (spec 2). Not run for the file path:
-/// Umbraco's begin/end request notifications and public access protection of the 404 page.
+/// Umbraco's begin/end request notifications. Differences from the page path: a public-access login or no-access page
+/// keeps status 404 here (Umbraco's page path answers it with 200), and <c>[Authorize]</c> gives the plain 404 here
+/// instead of a challenge.
 /// </para>
 /// </remarks>
 internal sealed class FileNotFoundMiddleware
@@ -154,16 +174,16 @@ internal sealed class FileNotFoundMiddleware
 
         try
         {
-            await RenderAsync(httpContext, page, domain);
+            if (!await RenderAsync(httpContext, page, domain))
+            {
+                logger.LogDebug("The visitor is not authorized for the 404 page of {PathAndQuery}; the plain 404 is returned.", context.PathAndQuery);
+                ResetToPlainNotFound(httpContext);
+            }
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             logger.LogError(exception, "Rendering the 404 page for {PathAndQuery} failed; the plain 404 is returned.", context.PathAndQuery);
-            if (!httpContext.Response.HasStarted)
-            {
-                httpContext.Response.Clear();
-                httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            }
+            ResetToPlainNotFound(httpContext);
         }
     }
 
@@ -213,7 +233,14 @@ internal sealed class FileNotFoundMiddleware
         }
     }
 
-    private static async Task RenderAsync(HttpContext httpContext, NotFoundPage page, Domain? domain)
+    /// <summary>
+    /// Renders the 404 page through Umbraco and MVC.
+    /// </summary>
+    /// <param name="httpContext">The HTTP context of the request.</param>
+    /// <param name="page">The resolved 404 page.</param>
+    /// <param name="domain">The matched domain, or <c>null</c>.</param>
+    /// <returns><c>false</c> when the visitor is not authorized for the page's controller; nothing was rendered.</returns>
+    private static async Task<bool> RenderAsync(HttpContext httpContext, NotFoundPage page, Domain? domain)
     {
         var services = httpContext.RequestServices;
         var router = services.GetRequiredService<IPublishedRouter>();
@@ -240,24 +267,43 @@ internal sealed class FileNotFoundMiddleware
         umbracoContext.PublishedRequest = publishedRequest;
 
         var routeValues = await services.GetRequiredService<IUmbracoRouteValuesFactory>().CreateAsync(httpContext, publishedRequest);
+
+        // Public access, exactly as UmbracoRouteValueTransformer does on the page path.
+        routeValues = await services.GetRequiredService<IPublicAccessRequestHandler>().RewriteForPublishedContentAccessAsync(httpContext, routeValues)
+            ?? routeValues;
         umbracoContext.PublishedRequest = routeValues.PublishedRequest;
         httpContext.Features.Set(routeValues);
 
         // Routing has set the variation context already. It is set again here, in the method that renders, so the
-        // culture also reaches the rendering when the variation context falls back to an AsyncLocal (no request cache).
+        // culture also reaches the rendering when the variation context falls back to an AsyncLocal (no request cache),
+        // and from the resolver's culture, which Umbraco's domain lookup overwrites on the request when no domain matched.
+        var culture = string.IsNullOrWhiteSpace(page.Culture) ? routeValues.PublishedRequest.Culture : page.Culture;
         services.GetRequiredService<IVariationContextAccessor>().VariationContext =
-            new VariationContext(routeValues.PublishedRequest.Culture, routeValues.PublishedRequest.Segment);
+            new VariationContext(culture, routeValues.PublishedRequest.Segment);
 
         var routeData = new RouteData();
         routeData.Values["controller"] = routeValues.ControllerName;
         routeData.Values["action"] = routeValues.ActionName;
         httpContext.Request.RouteValues = new RouteValueDictionary(routeData.Values);
 
-        var actionContext = new ActionContext(httpContext, routeData, routeValues.ControllerActionDescriptor);
+        var descriptor = routeValues.ControllerActionDescriptor;
+        var endpoint = new Endpoint(
+            requestDelegate: null,
+            new EndpointMetadataCollection(descriptor.EndpointMetadata.Append(descriptor)),
+            descriptor.DisplayName);
+        httpContext.SetEndpoint(endpoint);
+
+        if (!await IsAuthorizedAsync(httpContext, endpoint))
+        {
+            return false;
+        }
+
+        var actionContext = new ActionContext(httpContext, routeData, descriptor);
         var invoker = services.GetRequiredService<IActionInvokerFactory>().CreateInvoker(actionContext)
             ?? throw new InvalidOperationException($"No action invoker was created for {routeValues.ControllerName}.{routeValues.ActionName}.");
 
         httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        httpContext.Response.ContentLength = null;
 
         var isHead = HttpMethods.IsHead(httpContext.Request.Method);
         var originalBody = httpContext.Response.Body;
@@ -276,6 +322,42 @@ internal sealed class FileNotFoundMiddleware
             {
                 httpContext.Response.Body = originalBody;
             }
+        }
+
+        return true;
+    }
+
+    private static async Task<bool> IsAuthorizedAsync(HttpContext httpContext, Endpoint endpoint)
+    {
+        if (endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
+        {
+            return true;
+        }
+
+        var services = httpContext.RequestServices;
+        var policy = await AuthorizationPolicy.CombineAsync(
+            services.GetRequiredService<IAuthorizationPolicyProvider>(),
+            endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(),
+            endpoint.Metadata.GetOrderedMetadata<AuthorizationPolicy>());
+        if (policy is null)
+        {
+            return true;
+        }
+
+        var evaluator = services.GetRequiredService<IPolicyEvaluator>();
+        var authentication = await evaluator.AuthenticateAsync(policy, httpContext);
+        var authorization = await evaluator.AuthorizeAsync(policy, authentication, httpContext, httpContext);
+        return authorization.Succeeded;
+    }
+
+    private static void ResetToPlainNotFound(HttpContext httpContext)
+    {
+        httpContext.SetEndpoint(null);
+        httpContext.Features.Set<UmbracoRouteValues>(null);
+        if (!httpContext.Response.HasStarted)
+        {
+            httpContext.Response.Clear();
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
         }
     }
 }

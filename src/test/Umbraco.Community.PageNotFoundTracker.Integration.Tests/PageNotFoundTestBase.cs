@@ -147,7 +147,13 @@ internal abstract class PageNotFoundTestBase : UmbracoTestServerTestBase
         return await this.Client.SendAsync(request);
     }
 
-    private static IContentType BuildContentType(string alias, string name) =>
+    /// <summary>
+    /// Builds a document type with a title property.
+    /// </summary>
+    /// <param name="alias">The alias.</param>
+    /// <param name="name">The name.</param>
+    /// <returns>The document type.</returns>
+    protected static IContentType BuildContentType(string alias, string name) =>
         new ContentTypeBuilder()
             .WithAlias(alias)
             .WithName(name)
@@ -183,7 +189,16 @@ internal abstract class PageNotFoundTestBase : UmbracoTestServerTestBase
         this.CreatePublishedPage(plainPage, "Plain", PlainPageTitle, home, null);
     }
 
-    private IContent CreatePublishedPage(IContentType contentType, string name, string title, IContent? parent, Guid? key)
+    /// <summary>
+    /// Creates and publishes a page with a title.
+    /// </summary>
+    /// <param name="contentType">The document type.</param>
+    /// <param name="name">The name.</param>
+    /// <param name="title">The title.</param>
+    /// <param name="parent">The parent, or <c>null</c> for a root node.</param>
+    /// <param name="key">The key, or <c>null</c> for a generated one.</param>
+    /// <returns>The page.</returns>
+    protected IContent CreatePublishedPage(IContentType contentType, string name, string title, IContent? parent, Guid? key)
     {
         var contentService = this.GetRequiredService<IContentService>();
         var builder = new ContentBuilder().WithContentType(contentType).WithName(name);

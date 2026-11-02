@@ -9,11 +9,14 @@ using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Cms.Core.Models;
 using Umbraco.Cms.Core.Models.ContentEditing;
 using Umbraco.Cms.Core.Notifications;
+using Umbraco.Cms.Core.Routing;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Tests.Common.Builders;
 using Umbraco.Cms.Tests.Common.Builders.Extensions;
 using Umbraco.Cms.Tests.Common.Testing;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
+using Umbraco.Community.PageNotFoundTracker.Core.NotFound;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 
 namespace Umbraco.Community.PageNotFoundTracker.Integration.Tests;
 
@@ -87,11 +90,34 @@ internal sealed class FileNotFoundCultureDomainTests : PageNotFoundTestBase
         Assert.That(this.Recorder.Occurrences[0].Culture, Is.EqualTo("nl-NL"));
     }
 
+    /// <summary>
+    /// Tests that the culture a resolver returns is rendered on the file path even when no domain matches (Umbraco's
+    /// routing then sets its default language on the published request).
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Missing_File_Without_Domain_Renders_The_Resolver_Culture()
+    {
+        using var response = await this.GetAsync(CultureForcingResolver.ForcedDutchPath);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+            Assert.That(body, Does.Contain(DutchTitle));
+            Assert.That(body, Does.Not.Contain(EnglishTitle));
+            Assert.That(this.Recorder.Occurrences, Has.Count.EqualTo(1));
+        });
+        Assert.That(this.Recorder.Occurrences[0].Domain, Is.Null);
+    }
+
     /// <inheritdoc />
     protected override void CustomTestSetup(IUmbracoBuilder builder)
     {
         base.CustomTestSetup(builder);
         builder.Services.PostConfigure<PageNotFoundTrackerSettings>(settings => settings.NotFoundPageDocumentTypeAlias = VariantNotFoundPageAlias);
+        builder.Services.AddSingleton<INotFoundPageResolver>(services =>
+            new CultureForcingResolver(ActivatorUtilities.CreateInstance<DefaultNotFoundPageResolver>(services)));
 
         // The test base boots with AppCaches.NoCache, whose request cache is never available. Umbraco's variation context
         // accessor then falls back to an AsyncLocal, and the culture that routing sets inside an awaited call is lost
@@ -154,5 +180,25 @@ internal sealed class FileNotFoundCultureDomainTests : PageNotFoundTestBase
         };
         var updated = this.GetRequiredService<IDomainService>().UpdateDomainsAsync(home.Key, domains).GetAwaiter().GetResult();
         Assert.That(updated.Success, Is.True, $"Assigning the domains failed: {updated.Status}.");
+    }
+
+    /// <summary>
+    /// The default resolver, except that <see cref="ForcedDutchPath"/> gets the Dutch variant without a domain.
+    /// </summary>
+    private sealed class CultureForcingResolver : INotFoundPageResolver
+    {
+        public const string ForcedDutchPath = "/forced-dutch.pdf";
+
+        private readonly INotFoundPageResolver inner;
+
+        public CultureForcingResolver(INotFoundPageResolver inner) => this.inner = inner;
+
+        public async Task<NotFoundPage?> ResolveAsync(NotFoundRequestContext context, Domain? domain, CancellationToken cancellationToken)
+        {
+            var page = await this.inner.ResolveAsync(context, domain, cancellationToken);
+            return page is not null && string.Equals(context.Path, ForcedDutchPath, StringComparison.OrdinalIgnoreCase)
+                ? page with { Culture = "nl-NL" }
+                : page;
+        }
     }
 }
