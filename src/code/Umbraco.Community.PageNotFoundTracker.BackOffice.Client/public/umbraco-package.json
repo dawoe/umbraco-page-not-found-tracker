@@ -1,0 +1,13 @@
+{
+    "$schema": "../node_modules/@umbraco-cms/backoffice/dist-cms/umbraco-package-schema.json",
+    "name": "PageNotFoundTracker",
+    "version": "17.0.0",
+    "extensions": [
+        {
+            "type": "backofficeEntryPoint",
+            "alias": "Umbraco.Community.PageNotFoundTracker",
+            "name": "PageNotFoundTracker Entry Point",
+            "js": "/App_Plugins/PageNotFoundTracker/entry-point.js?v=17.0.0"
+        }
+    ]
+}

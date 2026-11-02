@@ -1,0 +1,64 @@
+{
+  "servers": {
+    "umbraco-single-site": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@umbraco-cms/mcp-dev@17"
+      ],
+      "env": {
+        "UMBRACO_CLIENT_ID": "umbraco-back-office-mcp-single-site",
+        "UMBRACO_CLIENT_SECRET": "test-only-single-site-mcp-secret",
+        "UMBRACO_BASE_URL": "https://localhost:44401",
+        "NODE_TLS_REJECT_UNAUTHORIZED": "0",
+        "UMBRACO_INCLUDE_TOOL_COLLECTIONS": "document,document-type,data-type,media,language,culture,template"
+      }
+    },
+    "umbraco-multi-site-aliases": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@umbraco-cms/mcp-dev@17"
+      ],
+      "env": {
+        "UMBRACO_CLIENT_ID": "umbraco-back-office-mcp-multi-site-aliases",
+        "UMBRACO_CLIENT_SECRET": "test-only-multi-site-aliases-mcp-secret",
+        "UMBRACO_BASE_URL": "https://localhost:44402",
+        "NODE_TLS_REJECT_UNAUTHORIZED": "0",
+        "UMBRACO_INCLUDE_TOOL_COLLECTIONS": "document,document-type,data-type,media,language,culture,template"
+      }
+    },
+    "umbraco-multi-language": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@umbraco-cms/mcp-dev@17"
+      ],
+      "env": {
+        "UMBRACO_CLIENT_ID": "umbraco-back-office-mcp-multi-language",
+        "UMBRACO_CLIENT_SECRET": "test-only-multi-language-mcp-secret",
+        "UMBRACO_BASE_URL": "https://localhost:44403",
+        "NODE_TLS_REJECT_UNAUTHORIZED": "0",
+        "UMBRACO_INCLUDE_TOOL_COLLECTIONS": "document,document-type,data-type,media,language,culture,template"
+      }
+    },
+    "umbraco-multi-site-hostnames": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@umbraco-cms/mcp-dev@17"
+      ],
+      "env": {
+        "UMBRACO_CLIENT_ID": "umbraco-back-office-mcp-multi-site-hostnames",
+        "UMBRACO_CLIENT_SECRET": "test-only-multi-site-hostnames-mcp-secret",
+        "UMBRACO_BASE_URL": "https://localhost:44404",
+        "NODE_TLS_REJECT_UNAUTHORIZED": "0",
+        "UMBRACO_INCLUDE_TOOL_COLLECTIONS": "document,document-type,data-type,media,language,culture,template"
+      }
+    }
+  }
+}
