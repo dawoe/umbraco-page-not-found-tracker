@@ -129,9 +129,14 @@ Backoffice: `https://localhost:<port>/umbraco`, login `admin@example.com` / `123
 
 Scenario content: aliases and hostnames have two root nodes "Site A" and "Site B" (Site A is the
 original Clean root, renamed; Site B is a copy with descendants), so the same path (`/about`) exists
-on both. Umbraco domains are stored lowercase and without port: `localhost/sitea`,
-`localhost/siteb` (aliases); `www.sitea.local`, `www.siteb.local` (hostnames); Home domains
-`localhost/en`, `/nl`, `/fr` (language, default en-US). Multi-language: Home, About and Features
+on both. Umbraco domains are stored lowercase and include the profile's HTTPS port:
+`localhost:44402/sitea`, `localhost:44402/siteb` (aliases); `www.sitea.local:44404`,
+`www.siteb.local:44404` (hostnames); Home domains `localhost:44403/en`, `/nl`, `/fr` (language,
+default en-US). The port is required because the profile ports are fixed and non-default, browsers
+send it in the Host header, and Umbraco matches domains on host plus port: with port-less domains
+pages still routed, but Umbraco rendered every internal link absolute and without the port
+(`https://www.siteb.local/about/`), so clicking a link in a browser went to port 443 and failed. A Host
+header without the port now matches no domain (falls back, or 404 for `/siteB/...`). Multi-language: Home, About and Features
 vary by culture (`/en/about`, `/nl/over-ons`, `/fr/a-propos`, `/en/features`, `/nl/functies`,
 `/fr/fonctionnalites`); other Clean pages are invariant and served under every culture domain.
 Site and language markers are in the `<h1>` / `.subheading`, not in `<title>`.
@@ -222,8 +227,9 @@ Then, per scenario:
      `contentRows` at the site's own Blog (the copy still points at Site A's); then
      `update-document-properties` for title, subtitle and `contentRows`, and for the About subtitle.
   4. `put-document-domains` per site, e.g. `{"id": "<id>", "data": {"defaultIsoCode": null,
-     "domains": [{"domainName": "localhost/siteA", "isoCode": "en-US"}]}}` (hostnames: `www.siteA.local`
-     / `www.siteB.local`). No port in the name.
+     "domains": [{"domainName": "localhost:44402/siteA", "isoCode": "en-US"}]}}` (hostnames:
+     `www.siteA.local:44404` / `www.siteB.local:44404`). Always include the profile's HTTPS port in the
+     name (Umbraco stores it lowercase).
   5. `publish-document-with-descendants` per site with
      `{"includeUnpublishedDescendants": true, "cultures": ["en-US"]}`.
   6. Check with `get-document-urls` and curl (`/siteA/about` and `/siteB/about`; hostnames via
@@ -236,7 +242,8 @@ Then, per scenario:
   3. For Home, About and Features: `get-document-by-id`, then `update-document` with three variants
      (en-US, nl-NL, fr-FR) and per-culture title/subtitle values (names listed in the scenario
      content above; About/Features leave `title` empty).
-  4. `put-document-domains` on Home: `localhost/en`, `/nl`, `/fr`, `defaultIsoCode` `en-US`.
+  4. `put-document-domains` on Home: `localhost:44403/en`, `localhost:44403/nl`, `localhost:44403/fr`,
+     `defaultIsoCode` `en-US`.
   5. `publish-document-with-descendants` with all three cultures.
   6. Dictionary translations for nl-NL/fr-FR (so the `<title>` site name is not empty) are not in the
      configured MCP collections: use the Management API (`GET /umbraco/management/api/v1/dictionary`,
@@ -352,5 +359,10 @@ Finish every profile:
 - The first start of a fresh database logs harmless "database not available" warnings before the
   unattended install creates it.
 - `Umbraco.Cms` appends secrets to `appsettings.json` (see Committed databases); always revert.
+- Scenario domains must include the profile's HTTPS port (`localhost:44402/sitea`, `www.sitea.local:44404`,
+  `localhost:44403/en`). Without it pages still route, but Umbraco renders links absolute and without the
+  port, so browser navigation breaks; a curl of a single page does not show this, check the rendered
+  links. If a profile's port changes in `launchSettings.json`, update the domains in its database (and
+  re-commit it deliberately).
 - Deleted databases are recreated on the next run by the unattended settings (admin) and the MCP composer
   (API user), but the scenario content must be rebuilt (see Rebuilding scenario databases).
