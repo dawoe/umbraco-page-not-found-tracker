@@ -8,4 +8,11 @@
     <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.Core/Umbraco.Community.PageNotFoundTracker.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The integration tests resolve internal services from the container. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Umbraco.Community.PageNotFoundTracker.Integration.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
