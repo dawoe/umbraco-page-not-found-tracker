@@ -30,8 +30,6 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 /// </remarks>
 internal sealed class PageNotFoundLastChanceFinder : IContentLastChanceFinder
 {
-    private const string RecordedItemKey = "Umbraco.Community.PageNotFoundTracker.PageNotFoundRecorded";
-
     private readonly INotFoundPageResolver resolver;
     private readonly INotFoundRecorder recorder;
     private readonly IHttpContextAccessor httpContextAccessor;
@@ -130,14 +128,9 @@ internal sealed class PageNotFoundLastChanceFinder : IContentLastChanceFinder
 
     private async Task RecordAsync(HttpContext? httpContext, NotFoundRequestContext context, Domain? domain, bool pageResolved, CancellationToken cancellationToken)
     {
-        if (httpContext is not null)
+        if (httpContext is not null && !NotFoundRequestItems.TryMarkRecorded(httpContext))
         {
-            if (httpContext.Items.ContainsKey(RecordedItemKey))
-            {
-                return;
-            }
-
-            httpContext.Items[RecordedItemKey] = true;
+            return;
         }
 
         var culture = string.IsNullOrWhiteSpace(domain?.Culture) ? null : domain.Culture;

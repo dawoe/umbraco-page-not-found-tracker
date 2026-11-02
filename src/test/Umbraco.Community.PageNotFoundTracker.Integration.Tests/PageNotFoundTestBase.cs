@@ -1,6 +1,7 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System.Reflection;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.Cache;
@@ -107,6 +108,9 @@ internal abstract class PageNotFoundTestBase : UmbracoTestServerTestBase
     {
         builder.Services.AddUnique<INotFoundRecorder>(this.Recorder);
 
+        // The file 404 middleware, placed where UsePageNotFoundTracker() puts it on a real site.
+        builder.Services.AddTransient<IStartupFilter, PageNotFoundTrackerStartupFilter>();
+
         // Publishing must refresh the caches that front-end routing reads (see LocalServerMessenger).
         builder.Services.AddUnique<IServerMessenger, LocalServerMessenger>();
         builder.AddNotificationHandler<ContentTreeChangeNotification, ContentTreeChangeDistributedCacheNotificationHandler>();
@@ -130,6 +134,18 @@ internal abstract class PageNotFoundTestBase : UmbracoTestServerTestBase
     /// <param name="pathAndQuery">The path and query to request.</param>
     /// <returns>The response.</returns>
     protected Task<HttpResponseMessage> GetAsync(string pathAndQuery) => this.Client.GetAsync(new Uri(pathAndQuery, UriKind.Relative));
+
+    /// <summary>
+    /// Sends a request with the given method to the test server.
+    /// </summary>
+    /// <param name="method">The HTTP method.</param>
+    /// <param name="pathAndQuery">The path and query to request.</param>
+    /// <returns>The response.</returns>
+    protected async Task<HttpResponseMessage> SendAsync(HttpMethod method, string pathAndQuery)
+    {
+        using var request = new HttpRequestMessage(method, new Uri(pathAndQuery, UriKind.Relative));
+        return await this.Client.SendAsync(request);
+    }
 
     private static IContentType BuildContentType(string alias, string name) =>
         new ContentTypeBuilder()

@@ -39,4 +39,22 @@ internal sealed class PageNotFoundPageWithoutTemplateTests : PageNotFoundTestBas
         });
         Assert.That(this.Recorder.Occurrences[0].PageResolved, Is.True);
     }
+
+    /// <summary>
+    /// Tests the file path with that 404 page: the file middleware renders it through Umbraco, which runs the
+    /// last-chance finder again. The answer is still a 404 (never a 500) and the request is recorded once, as a file.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Missing_File_Is_Recorded_Once_When_The_404_Page_Has_No_Template()
+    {
+        using var response = await this.GetAsync("/missing.pdf");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+            Assert.That(this.Recorder.Occurrences, Has.Count.EqualTo(1));
+        });
+        Assert.That(this.Recorder.Occurrences[0].IsFile, Is.True);
+    }
 }

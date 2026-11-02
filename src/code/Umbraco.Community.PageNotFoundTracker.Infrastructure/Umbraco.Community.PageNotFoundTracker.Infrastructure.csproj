@@ -13,6 +13,10 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Umbraco.Community.PageNotFoundTracker.Integration.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- The entry package wires the internal middleware into the pipeline (UsePageNotFoundTracker). -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Umbraco.Community.PageNotFoundTracker</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>
