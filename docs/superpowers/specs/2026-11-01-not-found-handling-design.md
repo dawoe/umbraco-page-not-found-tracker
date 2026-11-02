@@ -1,6 +1,6 @@
 # Spec 2: 404 handling for pages and files
 
-Status: draft, awaiting builder check and approval
+Status: implemented
 Depends on: spec 1 (solution setup)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 

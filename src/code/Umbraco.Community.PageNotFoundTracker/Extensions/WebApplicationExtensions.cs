@@ -1,6 +1,7 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using Microsoft.AspNetCore.Builder;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Extensions;
 
 namespace Umbraco.Community.PageNotFoundTracker.Extensions;
 
@@ -10,10 +11,16 @@ namespace Umbraco.Community.PageNotFoundTracker.Extensions;
 public static class WebApplicationExtensions
 {
     /// <summary>
-    /// Adds the Page Not Found Tracker to the request pipeline. Safe to call at any position in <c>Program.cs</c>; currently does nothing and is the hook later specs fill.
+    /// Adds the Page Not Found Tracker middleware to the request pipeline: the 404 page for missing files.
     /// </summary>
     /// <param name="app">A <see cref="WebApplication"/> instance.</param>
+    /// <remarks>
+    /// Call it after <c>BootUmbracoAsync()</c> and before <c>UseUmbraco()</c> in <c>Program.cs</c>, so the middleware wraps
+    /// Umbraco's pipeline (static files, media and routing) and sees the 404 it produces. Calling it more than once
+    /// registers the middleware only once.
+    /// </remarks>
     public static void UsePageNotFoundTracker(this WebApplication app)
     {
+        app.UseFileNotFoundHandling();
     }
 }

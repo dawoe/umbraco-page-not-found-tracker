@@ -6,15 +6,16 @@ Guidance for Claude Code when working in this repository.
 
 `Umbraco.Community.PageNotFoundTracker` is an Umbraco 17 (LTS, .NET 10) package that records
 requests that end in a 404 and, in later versions, lets editors turn tracked URLs into redirects
-or block them. Only the foundation exists today (spec 1): an empty but fully working solution
-that builds, tests, packs and publishes, a placeholder backoffice dashboard, a no-op
-`UsePageNotFoundTracker()` hook, and a test site that runs in four scenarios. Features
-(specs 2 to 7) are planned, not built. Do not document or promise them as existing.
+or block them. Built today: the foundation (spec 1: solution, build, test, pack, publish, a
+placeholder backoffice dashboard, a test site that runs in four scenarios) and 404 handling
+(spec 2: the configured 404 page is shown for missing pages and missing files). Nothing is
+recorded yet: tracking, the dashboard, redirects and blocking (specs 3 to 7) are planned, not
+built. Do not document or promise them as existing.
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
 
 1. Solution setup: `docs/superpowers/specs/2026-11-01-solution-setup-design.md` (done)
-2. 404 handling for pages and files: `docs/superpowers/specs/2026-11-01-not-found-handling-design.md`
+2. 404 handling for pages and files: `docs/superpowers/specs/2026-11-01-not-found-handling-design.md` (done)
 3. Tracking of 404 URLs: `docs/superpowers/specs/2026-11-01-tracking-design.md`
 4. Backoffice dashboard: `docs/superpowers/specs/2026-11-01-dashboard-design.md`
 5. Redirect creation: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md`
@@ -24,6 +25,7 @@ Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spe
 Plans (`docs/superpowers/plans/`):
 
 - Solution setup: `docs/superpowers/plans/2026-11-01-solution-setup.md`
+- 404 handling: `docs/superpowers/plans/2026-11-02-not-found-handling.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -283,6 +285,103 @@ Finish every profile:
 - The `init-umbraco-mcp` skill's advice to never commit secrets and use least privilege is deliberately
   overridden (spec decision): the values are test-only and live in throwaway databases.
 
+## 404 handling (spec 2)
+
+Setting `Umbraco:Community:PageNotFoundTracker:NotFoundPageDocumentTypeAlias` (`PageNotFoundTrackerSettings`,
+`Constants.SectionName`). Package default is empty (no custom page, Umbraco's own 404 behaviour). The test
+site sets `error` in `appsettings.json`; the integration tests use `notFoundPage`.
+
+**Resolver.** `INotFoundPageResolver` (Core, public):
+`Task<NotFoundPage?> ResolveAsync(NotFoundRequestContext context, Domain? domain, CancellationToken ct)`.
+`NotFoundRequestContext(PathAndQuery, Host, Port?, IsFile)` has a `Path` property (no query);
+`NotFoundPage(IPublishedContent Content, string? Culture)`. The caller matches the domain, the resolver
+does not. Returning `null` means Umbraco's default behaviour applies. A consumer replaces it with
+`AddSingleton<INotFoundPageResolver, X>()` in a composer; the package uses `TryAddSingleton` for the
+resolver, `IRequestDomainMatcher` and `INotFoundRecorder`, so a consumer registration wins in either order
+(covered by integration tests). The resolver must be singleton-compatible: the last-chance finder is a
+singleton and holds it.
+
+`DefaultNotFoundPageResolver` rules: root = the domain's content node, or the first root without a domain.
+Alias lookup: direct children of the root first, then descendants (tree order); the first published
+candidate wins (unpublished ones are skipped). Culture = the domain's culture, else the default language
+(then `Culture` is null); an invariant page gets a null culture; a variant page without a published variant
+in that culture counts as not found. Empty alias, no match or unpublished root gives `null`.
+
+**Page path.** `PageNotFoundLastChanceFinder` (registered with `SetContentLastChanceFinder`, replacing
+Umbraco's registration). It asks the resolver (exceptions are logged and treated as not resolved), sets the
+published content, culture and 404 status, and keeps the URL. When nothing resolves it delegates to Umbraco's
+`ContentFinderByConfigured404`, so the `Error404Collection` configuration still works. Registration order:
+`SetContentLastChanceFinder` (`AddUnique`) overwrites whatever last-chance finder another composer registered
+before the package, and the fallback is always `ContentFinderByConfigured404`, never that earlier finder; a site
+that registers its own last-chance finder after the package replaces ours and drops this signal. Umbraco calls
+the finder a second time for a page without a template; the once-per-request guard covers that. When a page
+resolved, the finder also registers one `Response.OnStarting` callback that turns a 200 into a 404 (Umbraco's
+public-access rewrite drops the 404 status, see below); other statuses are untouched. A client abort while
+resolving is logged at debug and falls back to Umbraco's finder. `[Authorize]` on a hijacked 404 controller
+gives Umbraco's challenge (302/401) for anonymous visitors on the page path, whereas the file path answers a
+plain 404.
+
+**File path.** `FileNotFoundMiddleware`, added once by `UsePageNotFoundTracker()` (via the internal
+`UseFileNotFoundHandling()`). It runs `next` first and acts when: GET or HEAD, last path segment has an
+extension, the path is not Umbraco-owned and not under `/.well-known`, status is 404, the response has not
+started and has no content type or length. So it replaces any bodyless 404 on an extension path, including a
+site endpoint's `NotFound()`; a component that writes a body wins. File requests never reach Umbraco's
+routing, so it builds a synthetic published request (`IUmbracoContextFactory.EnsureUmbracoContext`,
+`IPublishedRouter`, `IUmbracoRouteValuesFactory`) and invokes the page's MVC action through
+`IActionInvokerFactory` with status 404; the URL stays and HEAD gets headers without a body. It runs Umbraco's
+public access check, so a protected 404 page shows the login page (status stays 404). `[Authorize]` on a
+hijacked controller gives a plain 404 (no challenge). A render failure resets to a plain 404, never a 500.
+For the render it sets `CultureInfo.CurrentCulture`/`CurrentUICulture` to the page's culture (else the published
+request's, else the default language) and restores them: on the page path Umbraco's request localization does
+that inside the pipeline, which does not flow out to the middleware. Without it a Linux CI runner (no `LANG`, process
+culture invariant) failed every dictionary lookup in the template (`GetLanguageByIsoCode("")`) and fell back to the
+plain 404 while Windows passed; the regression test uses `new CultureInfo("")`, because Umbraco's culture
+dictionary stops at the `CultureInfo.InvariantCulture` instance by reference, so neither that instance nor Windows
+`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` reproduces it.
+
+**Umbraco-owned paths.** `UmbracoOwnedPaths` (Core, public static): `/umbraco`, `/App_Plugins`, `/_framework`
+(segment boundary, case-insensitive), plus `IsFileRequest`. Spec 6 (blocking) is meant to reuse it; do not
+duplicate the list.
+
+**Recording call point (spec 3).** `INotFoundRecorder.RecordAsync(NotFoundOccurrence, ct)` (internal);
+`NoOpNotFoundRecorder` is the default. `NotFoundOccurrence(PathAndQuery, Domain?, Culture?, IsFile, PageResolved)`.
+Both paths call it once per request: `NotFoundRequestItems.TryMarkRecorded` (key in `HttpContext.Items`)
+guards it. The middleware records before rendering, so a failed render is still `PageResolved=true`. Recorder
+exceptions are logged and swallowed. The finder is a singleton: keep a recorder singleton-compatible or
+resolve scoped work per request.
+
+**Current behaviour to know.** A protected 404 page: both paths answer 404 with the protection's login page
+(on the page path Umbraco's public-access rewrite builds a new published request that drops the 404 status,
+and the finder's `OnStarting` callback restores it). An existing page with no template is answered by the 404
+page with 404 and recorded as missing (Umbraco's semantics). Requesting the 404 page's own URL gives 200.
+Without a domain the file path renders the resolver's culture variant, but `PublishedRequest.Culture` stays
+Umbraco's default language (anything reading the request culture rather than the variation context sees the
+default).
+
+**Integration tests** (`Integration.Tests`, derive from `PageNotFoundTestBase` on `UmbracoTestServerTestBase`):
+- Infrastructure grants `InternalsVisibleTo` to `Integration.Tests` (the props-wide IVT covers only
+  `<Assembly>.Tests`) and to the entry project.
+- A csproj target copies the test dll's `deps.json` as `Umbraco.Tests.Integration.deps.json`
+  (`WebApplicationFactory` needs it).
+- `LocalServerMessenger` plus the distributed-cache notification handlers make publishing refresh the
+  navigation and published caches. The test server has no `WebApplication`, so
+  `PageNotFoundTrackerStartupFilter` calls `UseFileNotFoundHandling()` before `UseUmbraco()`.
+- The test server compiles no Razor: test document types render through hijacked render controllers
+  (`TextPageController`, `NotFoundPageController`, ...). Real template rendering is covered by the E2E
+  tests and manual checks, not by integration tests.
+- `HttpContextRequestAppCache` is registered where culture rendering is tested (the base uses `NoCache`).
+- Examine indexes land in `<test project>/umbraco/Data/TEMP/` (gitignored).
+
+**Test site.** Clean's `error` document type (template `error`) already existed as a published `Error` page
+under every Home root in all four databases, so no type was created. Titles: "Page not found" (single-site);
+"Page not found - Site A/B" (aliases, hostnames, one Error per root); multi-language varies by culture
+(en-US "Page not found", nl-NL "Pagina niet gevonden", fr-FR "Page introuvable", URLs `/en/error/`,
+`/nl/fout/`, `/fr/erreur/`; the body text stays English). A 404 body is byte-identical to the Error page's
+own URL in every profile. E2E (`tests/not-found.spec.ts`, single-site) covers page, file, query
+preservation, `/about` 200 and the Management API; the other three profiles were verified manually.
+Clean quirk, not ours: on alias and culture domains the canonical link doubles the prefix
+(`/siteb/siteb/error/`), also on normal 200 pages; `<html lang="en">` is hardcoded.
+
 ## Tests
 
 - Unit: NUnit + Moq, coverlet. One project per code project with logic.
@@ -348,7 +447,8 @@ Finish every profile:
   (the harness scratch directory) the solution build failed with MSB3030 on `Core.dll` although each project built alone.
 - The client build must run before `dotnet build`/`dotnet pack`; `App_Plugins` is gitignored.
 - `UsePageNotFoundTracker()` goes after `BootUmbracoAsync()` and before `UseUmbraco()` in `Program.cs`
-  (see the test site). It does nothing yet and is safe in any position.
+  (see the test site). It registers the file 404 middleware (once); placed after `UseUmbraco()` the
+  middleware is inert. Without the call only the page path (last-chance finder) works.
 - Project-reference use and packing of the client bundle both depend on the linked `Content` item with
   `ContentRoot` metadata in the entry csproj (see Packing facts); keep that metadata.
 - Umbraco 17.8.0 strips `Cache=Shared` from the SQLite connection string on every start, so the profiles

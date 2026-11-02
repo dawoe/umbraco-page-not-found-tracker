@@ -8,7 +8,7 @@ namespace Umbraco.Community.PageNotFoundTracker.Core;
 public static class Constants
 {
     /// <summary>
-    /// The name of the configuration section holding the package settings.
+    /// The full path of the configuration section holding the package settings.
     /// </summary>
-    public const string SectionName = "PageNotFoundTracker";
+    public const string SectionName = "Umbraco:Community:PageNotFoundTracker";
 }

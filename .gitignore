@@ -29,3 +29,5 @@ test-sites/Website-V17/wwwroot/media/
 src/test/*/TEMP/
 src/test/*/appsettings-schema*.json
 src/test/*/umbraco-package-schema.json
+# Examine indexes the web test server (UmbracoTestServerTestBase) writes below its content root
+src/test/*/umbraco/Data/TEMP/
