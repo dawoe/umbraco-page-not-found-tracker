@@ -1,5 +1,6 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Http;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core.Routing;
+using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Core.Web;
 using Umbraco.Cms.Web.Common.Routing;
 using Umbraco.Cms.Web.Website.Routing;
@@ -80,7 +82,11 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 /// <item><description><see cref="IActionInvokerFactory"/> executes the controller action with those route values. The
 /// action, its filters (including Umbraco's filter that applies the 404 status) and the view result run as in any MVC
 /// request, so the template, partials, navigation and view components render with the 404 page as the current
-/// page.</description></item>
+/// page. For the render, <see cref="CultureInfo.CurrentCulture"/> and <see cref="CultureInfo.CurrentUICulture"/> are
+/// set to the page's culture (else the published request's culture, else Umbraco's default language; never the
+/// invariant culture) and restored afterwards: on the page path Umbraco's request localization does this inside the
+/// pipeline, which does not flow out to this middleware, and dictionary items in templates fail for the invariant
+/// culture (the process culture on a Linux host without <c>LANG</c>).</description></item>
 /// </list>
 /// <para>
 /// The request path is never rewritten and nothing is redirected, so the visitor's URL stays the original one. The
@@ -312,12 +318,27 @@ internal sealed class FileNotFoundMiddleware
             httpContext.Response.Body = Stream.Null;
         }
 
+        // On the page path Umbraco's request localization (UmbracoPublishedContentCultureProvider) sets the thread
+        // culture from the published request inside the pipeline; that does not flow out to this middleware, which runs
+        // after the pipeline. Templates need it (dictionary items read CurrentUICulture and fail for the invariant
+        // culture, the default on a Linux host without LANG), so the same culture is set for the render.
+        var previousCulture = CultureInfo.CurrentCulture;
+        var previousUICulture = CultureInfo.CurrentUICulture;
+        var renderCulture = await GetRenderCultureAsync(services, culture, routeValues.PublishedRequest.Culture);
+        if (renderCulture is not null)
+        {
+            CultureInfo.CurrentCulture = renderCulture;
+            CultureInfo.CurrentUICulture = renderCulture;
+        }
+
         try
         {
             await invoker.InvokeAsync();
         }
         finally
         {
+            CultureInfo.CurrentCulture = previousCulture;
+            CultureInfo.CurrentUICulture = previousUICulture;
             if (isHead)
             {
                 httpContext.Response.Body = originalBody;
@@ -325,6 +346,51 @@ internal sealed class FileNotFoundMiddleware
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Gets the thread culture for rendering: the first usable, non-invariant culture of the page's culture, the
+    /// published request's culture and Umbraco's default language.
+    /// </summary>
+    /// <param name="services">The request services.</param>
+    /// <param name="cultures">The candidate culture names, in order.</param>
+    /// <returns>The culture, or <c>null</c> to keep the current one.</returns>
+    private static async Task<CultureInfo?> GetRenderCultureAsync(IServiceProvider services, params string?[] cultures)
+    {
+        foreach (var name in cultures)
+        {
+            if (TryGetCulture(name) is { } culture)
+            {
+                return culture;
+            }
+        }
+
+        try
+        {
+            return TryGetCulture(await services.GetRequiredService<ILanguageService>().GetDefaultIsoCodeAsync());
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    private static CultureInfo? TryGetCulture(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        try
+        {
+            var culture = CultureInfo.GetCultureInfo(name);
+            return string.IsNullOrEmpty(culture.Name) ? null : culture;
+        }
+        catch (CultureNotFoundException)
+        {
+            return null;
+        }
     }
 
     private static async Task<bool> IsAuthorizedAsync(HttpContext httpContext, Endpoint endpoint)

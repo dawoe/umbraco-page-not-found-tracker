@@ -331,6 +331,13 @@ routing, so it builds a synthetic published request (`IUmbracoContextFactory.Ens
 `IActionInvokerFactory` with status 404; the URL stays and HEAD gets headers without a body. It runs Umbraco's
 public access check, so a protected 404 page shows the login page (status stays 404). `[Authorize]` on a
 hijacked controller gives a plain 404 (no challenge). A render failure resets to a plain 404, never a 500.
+For the render it sets `CultureInfo.CurrentCulture`/`CurrentUICulture` to the page's culture (else the published
+request's, else the default language) and restores them: on the page path Umbraco's request localization does
+that inside the pipeline, which does not flow out to the middleware. Without it a Linux CI runner (no `LANG`, process
+culture invariant) failed every dictionary lookup in the template (`GetLanguageByIsoCode("")`) and fell back to the
+plain 404 while Windows passed; the regression test uses `new CultureInfo("")`, because Umbraco's culture
+dictionary stops at the `CultureInfo.InvariantCulture` instance by reference, so neither that instance nor Windows
+`DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` reproduces it.
 
 **Umbraco-owned paths.** `UmbracoOwnedPaths` (Core, public static): `/umbraco`, `/App_Plugins`, `/_framework`
 (segment boundary, case-insensitive), plus `IsFileRequest`. Spec 6 (blocking) is meant to reuse it; do not

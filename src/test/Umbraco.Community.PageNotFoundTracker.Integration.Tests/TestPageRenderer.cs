@@ -1,5 +1,6 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using System.Globalization;
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using Umbraco.Cms.Core.Models.PublishedContent;
@@ -14,6 +15,11 @@ namespace Umbraco.Community.PageNotFoundTracker.Integration.Tests;
 internal static class TestPageRenderer
 {
     /// <summary>
+    /// The marker written before the thread's UI culture name.
+    /// </summary>
+    public const string UiCultureMarker = "ui-culture:";
+
+    /// <summary>
     /// Renders a page as a small HTML fragment.
     /// </summary>
     /// <param name="page">The current page.</param>
@@ -23,9 +29,12 @@ internal static class TestPageRenderer
         var name = WebUtility.HtmlEncode(page?.Name ?? string.Empty);
         var title = WebUtility.HtmlEncode(page?.GetProperty(PageNotFoundTestBase.TitleAlias)?.GetValue()?.ToString() ?? string.Empty);
 
+        // The thread UI culture, which Razor templates use for dictionary items (Umbraco.GetDictionaryValue).
+        var uiCulture = WebUtility.HtmlEncode(CultureInfo.CurrentUICulture.Name);
+
         return new ContentResult
         {
-            Content = $"<html><body><h1>{name}</h1><p class=\"title\">{title}</p></body></html>",
+            Content = $"<html><body><h1>{name}</h1><p class=\"title\">{title}</p><p class=\"ui-culture\">{UiCultureMarker}{uiCulture}</p></body></html>",
             ContentType = "text/html",
         };
     }

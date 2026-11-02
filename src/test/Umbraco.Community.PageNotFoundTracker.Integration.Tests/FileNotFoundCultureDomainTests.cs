@@ -1,5 +1,6 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using System.Globalization;
 using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -111,6 +112,56 @@ internal sealed class FileNotFoundCultureDomainTests : PageNotFoundTestBase
         Assert.That(this.Recorder.Occurrences[0].Domain, Is.Null);
     }
 
+    /// <summary>
+    /// Tests that the 404 page for a file renders with the page's culture as the thread culture, also when the process
+    /// culture is the invariant culture (as on a Linux CI runner without LANG). Umbraco's culture dictionary, used by
+    /// templates for dictionary items, throws for the invariant culture, so without it the file fell back to the plain
+    /// 404. The page path is included for comparison: Umbraco's request localization sets the culture there.
+    /// </summary>
+    /// <param name="path">The missing file or page.</param>
+    /// <param name="culture">The expected thread culture.</param>
+    /// <param name="expectedTitle">The title of the 404 page in that culture.</param>
+    /// <returns>A task.</returns>
+    [TestCase("/nl/missing.pdf", "nl-NL", DutchTitle)]
+    [TestCase("/en/missing.pdf", "en-US", EnglishTitle)]
+    [TestCase(CultureForcingResolver.ForcedDutchPath, "nl-NL", DutchTitle)]
+    [TestCase("/nl/does-not-exist", "nl-NL", DutchTitle)]
+    public async Task NotFound_Page_Renders_In_Page_Culture_When_Process_Culture_Is_Invariant(string path, string culture, string expectedTitle)
+    {
+        HttpResponseMessage response;
+        string body;
+        var previous = (CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture, CultureInfo.DefaultThreadCurrentCulture, CultureInfo.DefaultThreadCurrentUICulture);
+
+        // A separate invariant instance, as a Linux process without LANG gets: Umbraco's culture dictionary walks the
+        // parents until it reaches CultureInfo.InvariantCulture by reference, so this instance makes it call
+        // GetLanguageByIsoCode(""), which throws (the CI failure). The InvariantCulture instance itself would not.
+        var invariant = new CultureInfo(string.Empty);
+        try
+        {
+            CultureInfo.DefaultThreadCurrentCulture = invariant;
+            CultureInfo.DefaultThreadCurrentUICulture = invariant;
+            CultureInfo.CurrentCulture = invariant;
+            CultureInfo.CurrentUICulture = invariant;
+
+            response = await this.GetAsync(path);
+            body = await response.Content.ReadAsStringAsync();
+        }
+        finally
+        {
+            (CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture, CultureInfo.DefaultThreadCurrentCulture, CultureInfo.DefaultThreadCurrentUICulture) = previous;
+        }
+
+        using (response)
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+                Assert.That(body, Does.Contain(expectedTitle));
+                Assert.That(body, Does.Contain(TestPageRenderer.UiCultureMarker + culture));
+            });
+        }
+    }
+
     /// <inheritdoc />
     protected override void CustomTestSetup(IUmbracoBuilder builder)
     {
@@ -134,6 +185,16 @@ internal sealed class FileNotFoundCultureDomainTests : PageNotFoundTestBase
         var languageService = this.GetRequiredService<ILanguageService>();
         var language = languageService.CreateAsync(new Language("nl-NL", "Dutch (Netherlands)"), Constants.Security.SuperUserKey).GetAwaiter().GetResult();
         Assert.That(language.Success, Is.True, "Creating nl-NL failed.");
+
+        // The dictionary item VariantNotFoundPageController reads; it needs a translation, or Umbraco's culture
+        // dictionary never looks up the language of the thread culture.
+        var english = languageService.GetAsync("en-US").GetAwaiter().GetResult()!;
+        var dictionaryItem = new DictionaryItem(VariantNotFoundPageController.DictionaryKey)
+        {
+            Translations = [new DictionaryTranslation(english, "Missing")],
+        };
+        var dictionary = this.GetRequiredService<IDictionaryItemService>().CreateAsync(dictionaryItem, Constants.Security.SuperUserKey).GetAwaiter().GetResult();
+        Assert.That(dictionary.Success, Is.True, $"Creating the dictionary item failed: {dictionary.Status}.");
 
         var contentType = new ContentTypeBuilder()
             .WithAlias(VariantNotFoundPageAlias)
