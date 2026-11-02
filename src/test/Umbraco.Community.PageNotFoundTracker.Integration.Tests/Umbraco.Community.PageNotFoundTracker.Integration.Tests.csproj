@@ -10,6 +10,15 @@
     <None Update="appsettings.Tests.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!--
+    UmbracoTestServerTestBase uses WebApplicationFactory<UmbracoTestServerTestBase>, which requires a deps.json named
+    after the assembly of that type (Umbraco.Tests.Integration) next to the test assembly. The test project's own
+    deps.json describes the same dependency graph, so it is copied under that name.
+  -->
+  <Target Name="CopyDepsJsonForUmbracoTestServer" AfterTargets="Build">
+    <Copy SourceFiles="$(OutDir)$(AssemblyName).deps.json" DestinationFiles="$(OutDir)Umbraco.Tests.Integration.deps.json" SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.BackOffice/Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" />
