@@ -310,9 +310,16 @@ in that culture counts as not found. Empty alias, no match or unpublished root g
 **Page path.** `PageNotFoundLastChanceFinder` (registered with `SetContentLastChanceFinder`, replacing
 Umbraco's registration). It asks the resolver (exceptions are logged and treated as not resolved), sets the
 published content, culture and 404 status, and keeps the URL. When nothing resolves it delegates to Umbraco's
-`ContentFinderByConfigured404`, so the `Error404Collection` configuration still works. A site that registers
-its own last-chance finder after the package replaces ours and drops this signal. Umbraco calls the finder a
-second time for a page without a template; the once-per-request guard covers that.
+`ContentFinderByConfigured404`, so the `Error404Collection` configuration still works. Registration order:
+`SetContentLastChanceFinder` (`AddUnique`) overwrites whatever last-chance finder another composer registered
+before the package, and the fallback is always `ContentFinderByConfigured404`, never that earlier finder; a site
+that registers its own last-chance finder after the package replaces ours and drops this signal. Umbraco calls
+the finder a second time for a page without a template; the once-per-request guard covers that. When a page
+resolved, the finder also registers one `Response.OnStarting` callback that turns a 200 into a 404 (Umbraco's
+public-access rewrite drops the 404 status, see below); other statuses are untouched. A client abort while
+resolving is logged at debug and falls back to Umbraco's finder. `[Authorize]` on a hijacked 404 controller
+gives Umbraco's challenge (302/401) for anonymous visitors on the page path, whereas the file path answers a
+plain 404.
 
 **File path.** `FileNotFoundMiddleware`, added once by `UsePageNotFoundTracker()` (via the internal
 `UseFileNotFoundHandling()`). It runs `next` first and acts when: GET or HEAD, last path segment has an
@@ -336,11 +343,13 @@ guards it. The middleware records before rendering, so a failed render is still 
 exceptions are logged and swallowed. The finder is a singleton: keep a recorder singleton-compatible or
 resolve scoped work per request.
 
-**Current behaviour to know.** A protected 404 page: the page path answers 200 with the login page (Umbraco
-replaces the content), the file path answers 404 with the login page. An existing page with no template is
-answered by the 404 page with 404 and recorded as missing (Umbraco's semantics). Requesting the 404 page's own
-URL gives 200. Without a domain the file path renders the default language even if a custom resolver returns
-another culture.
+**Current behaviour to know.** A protected 404 page: both paths answer 404 with the protection's login page
+(on the page path Umbraco's public-access rewrite builds a new published request that drops the 404 status,
+and the finder's `OnStarting` callback restores it). An existing page with no template is answered by the 404
+page with 404 and recorded as missing (Umbraco's semantics). Requesting the 404 page's own URL gives 200.
+Without a domain the file path renders the resolver's culture variant, but `PublishedRequest.Culture` stays
+Umbraco's default language (anything reading the request culture rather than the variation context sees the
+default).
 
 **Integration tests** (`Integration.Tests`, derive from `PageNotFoundTestBase` on `UmbracoTestServerTestBase`):
 - Infrastructure grants `InternalsVisibleTo` to `Integration.Tests` (the props-wide IVT covers only
