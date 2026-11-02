@@ -21,7 +21,15 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 /// When the resolver returns a page, it becomes the published content of the request, with the page's culture (when
 /// it has one) and status 404. Umbraco then picks the page's template and renders it as a normal page, so the visitor's
 /// URL stays the original one. When the resolver returns nothing or throws, Umbraco's
-/// <see cref="ContentFinderByConfigured404"/> runs, so the default behaviour is unchanged.
+/// <see cref="ContentFinderByConfigured404"/> runs, so the default behaviour is unchanged. A cancellation because the
+/// visitor aborted the request is logged at debug level only and also falls back to Umbraco's finder.
+/// </para>
+/// <para>
+/// When the resolved 404 page is under public-access protection, Umbraco's route value transformer rewrites the request
+/// to the protection's login or no-access page with a new published request, which drops the 404 status, and no
+/// notification fires afterwards. The finder therefore also registers a <see cref="HttpResponse.OnStarting(Func{object, Task}, object)"/>
+/// callback (once per request) that turns a 200 into a 404, so the response is a 404 as on the file path. Redirects
+/// and challenges are left alone.
 /// </para>
 /// <para>
 /// Every request that ends here is reported once to <see cref="INotFoundRecorder"/>, even when Umbraco calls the
@@ -80,6 +88,7 @@ internal sealed class PageNotFoundLastChanceFinder : IContentLastChanceFinder
             }
 
             request.SetIs404();
+            KeepNotFoundStatus(httpContext);
             found = true;
         }
         else
@@ -90,6 +99,34 @@ internal sealed class PageNotFoundLastChanceFinder : IContentLastChanceFinder
         await this.RecordAsync(httpContext, context, domain, page is not null, cancellationToken);
 
         return found;
+    }
+
+    /// <summary>
+    /// Registers, once per request, a callback that turns a 200 into a 404 when the response starts. Umbraco's
+    /// public-access rewrite replaces the published request of a protected 404 page with one for the login or no-access
+    /// page and drops the 404 status; this keeps the response a 404. Other statuses (redirects, challenges) are left
+    /// alone, and the callback does nothing when the status is already 404.
+    /// </summary>
+    private static void KeepNotFoundStatus(HttpContext? httpContext)
+    {
+        if (httpContext is null || httpContext.Items.ContainsKey(NotFoundRequestItems.StatusGuardKey))
+        {
+            return;
+        }
+
+        httpContext.Items[NotFoundRequestItems.StatusGuardKey] = true;
+        httpContext.Response.OnStarting(
+            static state =>
+            {
+                var response = ((HttpContext)state).Response;
+                if (response.StatusCode == StatusCodes.Status200OK)
+                {
+                    response.StatusCode = StatusCodes.Status404NotFound;
+                }
+
+                return Task.CompletedTask;
+            },
+            httpContext);
     }
 
     private static NotFoundRequestContext CreateContext(IPublishedRequestBuilder request, HttpContext? httpContext)
@@ -119,6 +156,11 @@ internal sealed class PageNotFoundLastChanceFinder : IContentLastChanceFinder
         {
             return await this.resolver.ResolveAsync(context, domain, cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            this.logger.LogDebug("The request for {PathAndQuery} was aborted while its 404 page was resolved; Umbraco's default 404 handling applies.", context.PathAndQuery);
+            return null;
+        }
         catch (Exception exception)
         {
             this.logger.LogError(exception, "Resolving the 404 page for {PathAndQuery} failed; Umbraco's default 404 handling applies.", context.PathAndQuery);
@@ -139,6 +181,10 @@ internal sealed class PageNotFoundLastChanceFinder : IContentLastChanceFinder
         try
         {
             await this.recorder.RecordAsync(occurrence, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            this.logger.LogDebug("The request for {PathAndQuery} was aborted while its 404 was recorded.", context.PathAndQuery);
         }
         catch (Exception exception)
         {

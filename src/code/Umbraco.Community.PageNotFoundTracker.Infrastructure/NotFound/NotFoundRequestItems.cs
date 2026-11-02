@@ -21,6 +21,11 @@ internal static class NotFoundRequestItems
     public const string FileHandledKey = "Umbraco.Community.PageNotFoundTracker.FileNotFoundHandled";
 
     /// <summary>
+    /// Set when the page path has registered its callback that keeps the status of a resolved 404 page at 404.
+    /// </summary>
+    public const string StatusGuardKey = "Umbraco.Community.PageNotFoundTracker.NotFoundStatusGuard";
+
+    /// <summary>
     /// Marks the request as recorded.
     /// </summary>
     /// <param name="httpContext">The HTTP context of the request.</param>

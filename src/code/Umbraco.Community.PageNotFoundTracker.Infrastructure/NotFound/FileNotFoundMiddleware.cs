@@ -89,9 +89,9 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 /// the 404 page's URL (as <c>UseStatusCodePagesWithReExecute</c> does) was rejected: Umbraco would route the 404 page's
 /// own URL (status 200, culture and domain from that URL, the Umbraco context URL no longer the original), and the
 /// 404 page needs a routable URL at all. A pre-rendered string was not an option (spec 2). Not run for the file path:
-/// Umbraco's begin/end request notifications. Differences from the page path: a public-access login or no-access page
-/// keeps status 404 here (Umbraco's page path answers it with 200), and <c>[Authorize]</c> gives the plain 404 here
-/// instead of a challenge.
+/// Umbraco's begin/end request notifications. A public-access login or no-access page keeps status 404 here, as on the
+/// page path (where <see cref="PageNotFoundLastChanceFinder"/> restores the 404 that Umbraco's rewrite drops).
+/// Difference from the page path: <c>[Authorize]</c> gives the plain 404 here instead of Umbraco's challenge.
 /// </para>
 /// </remarks>
 internal sealed class FileNotFoundMiddleware

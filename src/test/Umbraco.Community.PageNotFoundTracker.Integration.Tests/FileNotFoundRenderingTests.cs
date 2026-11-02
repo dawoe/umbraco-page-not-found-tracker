@@ -90,24 +90,22 @@ internal sealed class FileNotFoundRenderingTests : PageNotFoundTestBase
 
     /// <summary>
     /// Tests that a protected 404 page is handled by Umbraco's public access on both paths: an anonymous visitor gets
-    /// the login page of the protection, never the protected page.
+    /// the login page of the protection, never the protected page, with status 404. On the page path Umbraco's public
+    /// access rewrite builds a new published request for the login page, which drops the 404 status; the last-chance
+    /// finder restores it.
     /// </summary>
     /// <param name="path">The missing file or page.</param>
-    /// <param name="expectedStatus">
-    /// The status: the file path keeps 404; on the page path Umbraco's public access rewrite builds a new published
-    /// request for the login page, which drops the 404 status, so Umbraco answers 200.
-    /// </param>
     /// <returns>A task.</returns>
-    [TestCase("/protected.pdf", HttpStatusCode.NotFound)]
-    [TestCase("/protected-page-miss", HttpStatusCode.OK)]
-    public async Task Protected_NotFound_Page_Shows_The_Login_Page(string path, HttpStatusCode expectedStatus)
+    [TestCase("/protected.pdf")]
+    [TestCase("/protected-page-miss")]
+    public async Task Protected_NotFound_Page_Shows_The_Login_Page(string path)
     {
         using var response = await this.GetAsync(path);
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Multiple(() =>
         {
-            Assert.That(response.StatusCode, Is.EqualTo(expectedStatus));
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
             Assert.That(body, Does.Not.Contain(ProtectedPageTitle));
             Assert.That(body, Does.Contain(OtherPageTitle));
             Assert.That(this.Recorder.Occurrences, Has.Count.EqualTo(1));
