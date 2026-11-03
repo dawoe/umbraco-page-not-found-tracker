@@ -68,6 +68,21 @@
         "UmbracoMcp__ClientId": "umbraco-back-office-mcp-multi-site-hostnames",
         "UmbracoMcp__ClientSecret": "test-only-multi-site-hostnames-mcp-secret"
       }
+    },
+    "sql-server": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:44405;http://localhost:44305",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ConnectionStrings__umbracoDbDSN": "Server=localhost,14330;Database=PageNotFoundTracker;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True",
+        "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.SqlClient",
+        "Umbraco__CMS__Unattended__InstallUnattended": "true",
+        "Umbraco__CMS__Unattended__UnattendedUserName": "Test Admin",
+        "Umbraco__CMS__Unattended__UnattendedUserEmail": "admin@example.com",
+        "Umbraco__CMS__Unattended__UnattendedUserPassword": "1234567890"
+      }
     }
   }
 }
