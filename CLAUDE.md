@@ -625,10 +625,14 @@ Umbraco's `/management/api`), controllers derive `TrackedUrlsControllerBase : Ma
 - Items: `id`, `url` (the `DisplayUrl`), `relativePath` (not a column, for row actions), `domain`, `culture`, `isFile`,
   `hitCount`, `firstSeen`, `lastSeen` (UTC ISO 8601 with `Z`; SQLite returns an unspecified kind, the controller sets UTC).
 - Search: whitespace-only means no search; a non-blank term is **not** trimmed (`" about"` is literal). The term is
-  percent-decoded once (a malformed escape stays as typed) and lower-cased, `%`, `_`, `[` and `\` are escaped
-  (`LikePattern`, escape `\`), then a "contains" `LIKE` on the stored, normalised, lower-cased `Url`. So it is
-  case-insensitive without depending on collation, and it covers only the stored part of a URL truncated at 2000
-  characters. Search does not look at domain or culture.
+  percent-decoded once (a malformed escape stays as typed), lower-cased and given the normaliser's slash rules (runs of
+  `/` collapsed to one, one trailing `/` dropped, a lone `/` kept), so a URL copied from the table as displayed
+  (`/Old-Page/`) finds the stored `/old-page`; then `%`, `_`, `[` and `\` are escaped (`LikePattern`, escape `\`) and a
+  "contains" `LIKE` runs on the stored, normalised, lower-cased `Url`. So it is case-insensitive without depending on
+  collation, and it covers only the stored part of a URL truncated at 2000 characters. Search does not look at domain or
+  culture. Known limitation (not fixed): with `IncludeQueryString` on, the stored query part is lower-cased but not
+  percent-decoded while the search term is decoded, so a term with an encoded character in the query part does not
+  match itself.
 - Sorting: every order ends with ascending `Id` as tie-break, so paging is stable. `Url`/`Domain`/`Culture` ordering and
   the exact `domain`/`culture` filters follow the database collation (SQLite binary, SQL Server's default case-insensitive,
   which for example sorts `/missing.css` before `/missing-page`); the filter options are sorted in memory (ordinal). Count and page are two queries; everything runs in the database.
@@ -663,8 +667,9 @@ refresh, Umbraco's interceptors), then `markClientConfigured()` (`api/client-rea
   `Umb.Condition.SectionAlias` = `Umb.Section.Content` and `Pnft.Condition.DashboardAccess`. Its element hosts
   `<umb-collection alias="Pnft.Collection.TrackedUrl">` (17.8 has a collection kind only for workspace views). No icon:
   17.8 dashboards have none (`MetaDashboard` is label and pathname only).
-- The condition calls `GET access` once per page load (after the client is configured), shares the answer between
-  instances, and fails closed (an error hides the dashboard for that page load, no retry).
+- The condition calls `GET access` after the client is configured; concurrent instances share the request and a
+  successful answer (also `allowed: false`) is cached for the page load. It fails closed: an error (rejection, error
+  status, missing body) means not permitted, but is not cached, so the next condition instance asks again.
 - Collection aliases: collection `Pnft.Collection.TrackedUrl`, repository `Pnft.Repository.TrackedUrl`, view
   `Pnft.CollectionView.TrackedUrl.Table` (the only view), search box `Pnft.CollectionTextFilter.TrackedUrl`
   (`collectionTextFilter`, kind `default`; the framework's `filter` is mapped to the API's `search` in `query.ts`).
@@ -675,9 +680,11 @@ refresh, Umbraco's interceptors), then `markClientConfigured()` (`api/client-rea
   subclass overrides protected 17.8 internals and copies `collection-default.context.js` logic; the header `data-mark`s
   pass a Lit template as the column name. **Re-check both on every Umbraco upgrade.** Its token
   `PNFT_TRACKED_URL_COLLECTION_CONTEXT` sits on the framework alias with a discriminator.
-- "No domain"/"No culture" are the `PNFT_EMPTY` sentinel (`collection/types.ts`, a `unique symbol`, never a string, so a
-  real value that looks like a marker word is still sent as a value), mapped to `noDomain=true`/`noCulture=true`;
-  undefined or `''` means all. Select option values are `all`, `empty` and `v:<value>`.
+- "No domain"/"No culture" are the `PNFT_EMPTY` marker (`collection/types.ts`, the string `'\u0000empty'`), mapped to
+  `noDomain=true`/`noCulture=true`; undefined or `''` means all. It must be a string: Umbraco's `UmbDeepState` only emits
+  when `JSON.stringify` of the value changes, and a symbol serialises like "All", so the change was invisible to
+  observers. The leading U+0000 never occurs in a domain name or culture code, so a real value named `empty` or `all` is
+  still sent as a value. Select option values are `all`, `empty` and `v:<value>`.
 - `data-mark` hooks: `collection/data-marks.ts` (`pnft-collection`, `pnft-search`, `pnft-filter-domain`,
   `pnft-filter-culture`, `pnft-page-size`, `pnft-row` with `data-unique`, `pnft-total`, the five `pnft-state-*`, and
   `pnft-sort-<column>`). The E2E tests keep a copy: change both together.
