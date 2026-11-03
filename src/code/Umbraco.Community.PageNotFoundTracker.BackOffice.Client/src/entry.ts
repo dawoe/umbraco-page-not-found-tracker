@@ -1,6 +1,7 @@
 import type { UmbEntryPointOnInit } from '@umbraco-cms/backoffice/extension-api';
 import { UMB_AUTH_CONTEXT } from '@umbraco-cms/backoffice/auth';
 import { client } from './api/client.gen.js';
+import { markClientConfigured } from './api/client-ready.js';
 import { registerManifest } from './manifests';
 
 export const onInit: UmbEntryPointOnInit = (host, extensionRegistry) => {
@@ -10,6 +11,11 @@ export const onInit: UmbEntryPointOnInit = (host, extensionRegistry) => {
   // credentials, bearer token (with refresh) and Umbraco's response interceptors. No base URL is
   // baked into the bundle.
   host.consumeContext(UMB_AUTH_CONTEXT, (authContext) => {
-    authContext?.configureClient(client);
+    if (!authContext) {
+      return;
+    }
+
+    authContext.configureClient(client);
+    markClientConfigured();
   });
 };

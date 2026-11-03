@@ -1,8 +1,14 @@
 import type { UmbBackofficeExtensionRegistry } from "@umbraco-cms/backoffice/extension-registry";
 import { manifests as collectionManifests } from "./collection/manifests";
-import { manifests as placeholderDashboardManifests } from "./dashboards/placeholder/manifests";
+import { manifests as conditionManifests } from "./conditions/manifests";
+import { manifests as trackedUrlsDashboardManifests } from "./dashboards/tracked-urls/manifests";
 import { manifests as localizationManifests } from "./localization/manifests";
 
 export function registerManifest(registry: UmbBackofficeExtensionRegistry) {
-  registry.registerMany([...localizationManifests, ...collectionManifests, ...placeholderDashboardManifests]);
+  registry.registerMany([
+    ...localizationManifests,
+    ...conditionManifests,
+    ...collectionManifests,
+    ...trackedUrlsDashboardManifests,
+  ]);
 }

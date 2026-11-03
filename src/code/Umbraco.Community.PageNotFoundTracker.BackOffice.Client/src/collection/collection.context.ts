@@ -21,6 +21,9 @@ import type {
  * - the filter choices from the repository.
  *
  * Nothing is requested at construction: the collection element loads the list when it is rendered.
+ *
+ * The overrides mirror Umbraco 17.8 behaviour (`collection-default.context.js`, incl. its protected members);
+ * re-check them on every Umbraco upgrade.
  */
 export class PnftTrackedUrlCollectionContext extends UmbDefaultCollectionContext<
   PnftTrackedUrlCollectionModel,

@@ -73,6 +73,7 @@ export class PnftTrackedUrlTableElement extends UmbCollectionViewElementBase<Pnf
   #buildColumns() {
     const columns: Array<UmbTableColumn> = PNFT_COLUMNS.map((column) => ({
       // umb-table renders the name inside its sort button; a template lets the header carry its data-mark.
+      // The cast mirrors 17.8 umb-table header rendering (name is typed string); re-check on an Umbraco upgrade.
       name: html`<span data-mark=${column.sortMark}>${this.localize.term(column.labelKey)}</span>` as unknown as string,
       alias: column.alias,
       allowSorting: true,

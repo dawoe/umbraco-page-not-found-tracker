@@ -3,6 +3,7 @@ import type { UmbLocalizationDictionary } from '@umbraco-cms/backoffice/localiza
 // English texts of the package. Keys are used as `pageNotFoundTracker_<key>`.
 export default {
   pageNotFoundTracker: {
+    dashboardLabel: 'Page not found',
     trackedUrl: 'Tracked URL',
     trackedUrls: 'Tracked URLs',
     tableView: 'Table',
@@ -34,8 +35,9 @@ export default {
     emptyFilteredText: 'No tracked URLs match the search or filters. Change or clear them to see more.',
     errorHeadline: 'The tracked URLs could not be loaded',
     errorText: 'The request failed. Check that the site is running and reload the page.',
-    unavailableHeadline: 'Tracking data is unavailable',
+    unavailableHeadline: 'Tracking database unsupported or unavailable',
     unavailableText:
-      'The tracking database cannot be read at the moment. Check the site log; the list appears again once the database is available.',
+      'The tracking database is not supported by this package or could not be set up when the site started. ' +
+      'Nothing is tracked or shown until this is fixed. Check the site log, fix the cause and restart the site.',
   },
 } satisfies UmbLocalizationDictionary;
