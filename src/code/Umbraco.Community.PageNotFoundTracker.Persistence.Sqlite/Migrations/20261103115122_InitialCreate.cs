@@ -26,7 +26,7 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.Migrations
                     Domain = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false, defaultValue: ""),
                     Culture = table.Column<string>(type: "TEXT", maxLength: 50, nullable: false, defaultValue: ""),
                     IsFile = table.Column<bool>(type: "INTEGER", nullable: false),
-                    HitCount = table.Column<int>(type: "INTEGER", nullable: false),
+                    HitCount = table.Column<long>(type: "INTEGER", nullable: false),
                     FirstSeen = table.Column<DateTime>(type: "TEXT", nullable: false),
                     LastSeen = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },

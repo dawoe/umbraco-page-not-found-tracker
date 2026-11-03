@@ -54,8 +54,8 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.Migrations
                     b.Property<DateTime>("FirstSeen")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("HitCount")
-                        .HasColumnType("int");
+                    b.Property<long>("HitCount")
+                        .HasColumnType("bigint");
 
                     b.Property<bool>("IsFile")
                         .HasColumnType("bit");

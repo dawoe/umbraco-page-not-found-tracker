@@ -188,7 +188,23 @@ internal sealed class DefaultTrackedUrlUpsertTests
         Assert.That(await check.TrackedUrls.CountAsync(), Is.Zero);
     }
 
-    private static TrackedUrlHit Hit(string url, string domain = "", string culture = "", int count = 1, DateTime? first = null, DateTime? last = null) =>
+    /// <summary>
+    /// The hit count is a 64-bit value: incrementing past the 32-bit maximum keeps counting.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task HitCount_Counts_Past_Int32_Maximum()
+    {
+        var upsert = new DefaultTrackedUrlUpsert(NullLogger<DefaultTrackedUrlUpsert>.Instance);
+
+        await this.UpsertAsync(upsert, Hit("/a", count: int.MaxValue));
+        await this.UpsertAsync(upsert, Hit("/a", count: int.MaxValue));
+
+        using var context = new PageNotFoundTrackerDbContext(this.options);
+        Assert.That((await context.TrackedUrls.SingleAsync()).HitCount, Is.EqualTo(2L * int.MaxValue));
+    }
+
+    private static TrackedUrlHit Hit(string url, string domain = "", string culture = "", long count = 1, DateTime? first = null, DateTime? last = null) =>
         new(url, "hash" + url, url, url, domain, culture, false, count, first ?? T0, last ?? T0);
 
     private async Task<IReadOnlyCollection<TrackedUrlHit>> UpsertAsync(DefaultTrackedUrlUpsert upsert, params TrackedUrlHit[] hits)

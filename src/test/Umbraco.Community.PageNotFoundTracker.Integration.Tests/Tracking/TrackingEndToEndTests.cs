@@ -138,7 +138,7 @@ internal sealed class TrackingEndToEndTests : UmbracoTestServerTestBase
         /// Gets or sets the hit count.
         /// </summary>
         [Column("HitCount")]
-        public int HitCount { get; set; }
+        public long HitCount { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether the URL is a file.

@@ -14,7 +14,7 @@ using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 namespace Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.Migrations
 {
     [DbContext(typeof(PageNotFoundTrackerDbContext))]
-    [Migration("20261103110359_InitialCreate")]
+    [Migration("20261103115126_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -57,8 +57,8 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.Migrations
                     b.Property<DateTime>("FirstSeen")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("HitCount")
-                        .HasColumnType("int");
+                    b.Property<long>("HitCount")
+                        .HasColumnType("bigint");
 
                     b.Property<bool>("IsFile")
                         .HasColumnType("bit");

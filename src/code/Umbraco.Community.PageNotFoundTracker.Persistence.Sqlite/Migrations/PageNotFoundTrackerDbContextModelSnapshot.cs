@@ -47,7 +47,7 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.Migrations
                     b.Property<DateTime>("FirstSeen")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("HitCount")
+                    b.Property<long>("HitCount")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsFile")

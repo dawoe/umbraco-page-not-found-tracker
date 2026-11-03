@@ -24,6 +24,6 @@ public sealed record TrackedUrlHit(
     string Domain,
     string Culture,
     bool IsFile,
-    int Count,
+    long Count,
     DateTime FirstSeen,
     DateTime LastSeen);

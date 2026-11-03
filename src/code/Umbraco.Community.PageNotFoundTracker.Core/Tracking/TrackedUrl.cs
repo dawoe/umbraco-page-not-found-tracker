@@ -50,7 +50,7 @@ public class TrackedUrl
     /// <summary>
     /// Gets or sets the number of times the URL was requested.
     /// </summary>
-    public int HitCount { get; set; }
+    public long HitCount { get; set; }
 
     /// <summary>
     /// Gets or sets the UTC time of the first hit.

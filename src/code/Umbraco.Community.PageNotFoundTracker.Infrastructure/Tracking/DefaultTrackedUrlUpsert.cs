@@ -132,7 +132,7 @@ internal sealed class DefaultTrackedUrlUpsert(ILogger<DefaultTrackedUrlUpsert> l
         string urlHash = hit.UrlHash;
         string domain = hit.Domain;
         string culture = hit.Culture;
-        int count = hit.Count;
+        long count = hit.Count;
         DateTime lastSeen = hit.LastSeen;
 
         return set

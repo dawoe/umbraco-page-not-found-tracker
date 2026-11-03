@@ -200,6 +200,19 @@ internal sealed class TrackingQueueTests
         Assert.That(reported, Is.EqualTo(1001));
     }
 
+    /// <summary>
+    /// Merged counts are 64-bit and do not overflow at the 32-bit maximum.
+    /// </summary>
+    [Test]
+    public void TakeBatch_Merges_Counts_Past_Int32_Maximum()
+    {
+        var queue = CreateQueue(out _, out _);
+        queue.TryEnqueue(Hit("/a", "a", T0) with { Count = int.MaxValue });
+        queue.TryEnqueue(Hit("/a", "a", T0) with { Count = int.MaxValue });
+
+        Assert.That(queue.TakeBatch().Single().Count, Is.EqualTo(2L * int.MaxValue));
+    }
+
     private static TrackedUrlHit Hit(string url, string display, DateTime seen, string domain = "", string culture = "") =>
         new(url, "hash" + url, url, display, domain, culture, false, 1, seen, seen);
 
