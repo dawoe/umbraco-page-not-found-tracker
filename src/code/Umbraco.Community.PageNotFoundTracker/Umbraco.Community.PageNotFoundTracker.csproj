@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <!--
-    Single NuGet package: this project is the only packable one. Core, Infrastructure and BackOffice are
-    IsPackable=false and are bundled into this package instead of being published as sibling packages:
+    Single NuGet package: this project is the only packable one. Core, Infrastructure, BackOffice and the
+    Persistence.Sqlite and Persistence.SqlServer providers are IsPackable=false and are bundled into this package
+    instead of being published as sibling packages:
       * The ProjectReferences use PrivateAssets=all, so the nuspec gets no dependency on sibling packages.
       * BundleReferencedProjectAssemblies adds the assemblies (dll, xml docs) of all referenced projects
         (including the transitive Core) to lib/net10.0 of this package.
@@ -33,6 +34,8 @@
   <ItemGroup>
     <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" PrivateAssets="all" />
     <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.BackOffice/Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer/Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

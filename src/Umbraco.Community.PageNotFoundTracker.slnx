@@ -16,6 +16,8 @@
     <Project Path="code/Umbraco.Community.PageNotFoundTracker.Core/Umbraco.Community.PageNotFoundTracker.Core.csproj" />
     <Project Path="code/Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
     <Project Path="code/Umbraco.Community.PageNotFoundTracker.BackOffice/Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" />
+    <Project Path="code/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.csproj" />
+    <Project Path="code/Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer/Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.csproj" />
   </Folder>
   <Folder Name="/test-sites/">
     <Project Path="../test-sites/Website-V17/Website-V17.csproj" />

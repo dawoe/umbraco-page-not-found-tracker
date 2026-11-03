@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SqlServer provider of the tracking persistence: the provider registration, the design-time factory for dotnet ef and
+    the SqlServer migrations of PageNotFoundTrackerDbContext. Not packable: the entry package bundles the dll.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Only for dotnet ef (migrations add, has-pending-model-changes); never flows to consumers. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

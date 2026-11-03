@@ -7,6 +7,8 @@
   <ItemGroup>
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker/Umbraco.Community.PageNotFoundTracker.csproj" />
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer/Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.csproj" />
   </ItemGroup>
 
 </Project>
