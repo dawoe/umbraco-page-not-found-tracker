@@ -16,11 +16,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\code\Umbraco.Community.PageNotFoundTracker\Umbraco.Community.PageNotFoundTracker.csproj" />
-    <!-- The entry project references the providers with PrivateAssets=all and never uses them in code, so a
-         project-referencing site does not get their dlls (NuGet consumers get them from lib/). Without these
-         references no tracking provider is registered and tracking is off. -->
+    <!-- The entry project references the providers and BackOffice with PrivateAssets=all and never uses them in code,
+         so a project-referencing site does not get their dlls (NuGet consumers get them from lib/). Without these
+         references no tracking provider is registered (tracking is off) and the Management API controllers do not
+         exist. -->
     <ProjectReference Include="..\..\src\code\Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite\Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\code\Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer\Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\code\Umbraco.Community.PageNotFoundTracker.BackOffice\Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
