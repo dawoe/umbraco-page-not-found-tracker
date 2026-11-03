@@ -26,12 +26,29 @@ $expected = @(
     'staticwebassets/App_Plugins/PageNotFoundTracker/entry-point.js'
 )
 
+$clientPrefix = 'staticwebassets/App_Plugins/PageNotFoundTracker/'
+
 $zip = [System.IO.Compression.ZipFile]::OpenRead($packages[0].FullName)
 try {
     $entries = @($zip.Entries | ForEach-Object { $_.FullName })
+
+    # The client is configured at runtime from Umbraco's auth context: no dev-machine server URL
+    # may end up in the shipped bundle (entry-point.js and every other App_Plugins file).
+    $withLocalhost = @($zip.Entries |
+        Where-Object { $_.FullName.StartsWith($clientPrefix) -and $_.Length -gt 0 } |
+        Where-Object {
+            $reader = New-Object System.IO.StreamReader($_.Open())
+            try { $reader.ReadToEnd() -match 'localhost' }
+            finally { $reader.Dispose() }
+        } |
+        ForEach-Object { $_.FullName })
 }
 finally {
     $zip.Dispose()
+}
+
+if ($withLocalhost.Count -gt 0) {
+    throw "Package '$($packages[0].Name)' has 'localhost' in the client bundle: $($withLocalhost -join ', ')"
 }
 
 $missing = @($expected | Where-Object { $entries -notcontains $_ })
