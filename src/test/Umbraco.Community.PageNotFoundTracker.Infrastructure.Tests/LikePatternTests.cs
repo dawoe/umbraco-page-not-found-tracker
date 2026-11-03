@@ -55,6 +55,33 @@ internal sealed class LikePatternTests
     }
 
     /// <summary>
+    /// The term gets the normaliser's slash rules (runs of <c>/</c> collapsed, one trailing <c>/</c> dropped, a lone
+    /// <c>/</c> kept), so a URL copied as displayed matches the stored, normalised URL.
+    /// </summary>
+    /// <param name="input">The search term.</param>
+    /// <param name="expected">The expected pattern.</param>
+    [TestCase("/A/", "%/a%")]
+    [TestCase("//a", "%/a%")]
+    [TestCase("/", "%/%")]
+    [TestCase("//", "%/%")]
+    [TestCase("/a//b/", "%/a/b%")]
+    [TestCase("/a_b/", "%/a\\_b%")]
+    [TestCase("/a%25b//", "%/a\\%b%")]
+    public void Contains_AppliesNormaliserSlashRules(string input, string expected)
+    {
+        Assert.That(LikePattern.Contains(input), Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// A non-blank term is not trimmed.
+    /// </summary>
+    [Test]
+    public void Contains_DoesNotTrimWhitespace()
+    {
+        Assert.That(LikePattern.Contains(" about/"), Is.EqualTo("% about%"));
+    }
+
+    /// <summary>
     /// A long term is accepted.
     /// </summary>
     [Test]

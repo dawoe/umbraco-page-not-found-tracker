@@ -158,6 +158,26 @@ internal sealed class TrackedUrlQueryServiceTests : TrackingDatabaseFixture
     }
 
     /// <summary>
+    /// Tests that a URL copied as displayed (trailing slash, repeated slashes, other case) finds the stored, normalised
+    /// URL: the term gets the normaliser's slash rules.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task GetPageAsync_SearchAsDisplayed_MatchesNormalisedUrl()
+    {
+        await this.ReplaceRowsAsync([Row("/a"), Row("/a/b"), Row("/ab"), Row("/x/y")]);
+
+        TrackedUrlPage trailing = await this.service.GetPageAsync(Query(search: "/A/"), CancellationToken.None);
+        TrackedUrlPage repeated = await this.service.GetPageAsync(Query(search: "/a//b/"), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(trailing.Items.Select(r => r.Url), Is.EquivalentTo(new[] { "/a", "/a/b", "/ab" }));
+            Assert.That(repeated.Items.Select(r => r.Url), Is.EqualTo(new[] { "/a/b" }));
+        });
+    }
+
+    /// <summary>
     /// Tests that an upper-case term matches the lower-cased stored URLs.
     /// </summary>
     /// <returns>A task.</returns>
