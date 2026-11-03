@@ -24,20 +24,24 @@ internal static class UmbracoBuilderExtensions
     /// <param name="builder">A <see cref="IUmbracoBuilder"/>.</param>
     /// <returns>Updated <see cref="IUmbracoBuilder"/>.</returns>
     /// <remarks>
-    /// Services are registered with <c>TryAdd</c>, so a registration made by the consumer wins regardless of order.
+    /// Replaceable services are registered with <c>AddUnique</c>, so the last registration wins. The package composers
+    /// run before <see cref="PageNotFoundTrackerComposer"/>; a consumer replaces a service from a composer marked
+    /// <c>[ComposeAfter(typeof(PageNotFoundTrackerComposer))]</c>.
     /// </remarks>
     public static IUmbracoBuilder AddPageNotFoundTracker(this IUmbracoBuilder builder)
     {
         builder.Services.AddOptions<PageNotFoundTrackerSettings>()
             .Bind(builder.Config.GetSection(Constants.SectionName));
 
-        builder.Services.TryAddSingleton<INotFoundPageResolver, DefaultNotFoundPageResolver>();
-        builder.Services.TryAddSingleton<IRequestDomainMatcher, RequestDomainMatcher>();
+        builder.Services.AddUnique<INotFoundPageResolver, DefaultNotFoundPageResolver>();
+        builder.Services.AddUnique<IRequestDomainMatcher, RequestDomainMatcher>();
+
+        // TimeProvider is a shared framework service, not ours: keep a registration the site already made.
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<TrackingQueue>();
         builder.Services.AddSingleton<TrackingPersistenceState>();
         builder.Services.AddSingleton<ITrackingPersistenceState>(sp => sp.GetRequiredService<TrackingPersistenceState>());
-        builder.Services.TryAddSingleton<INotFoundRecorder, NotFoundTracker>();
+        builder.Services.AddUnique<INotFoundRecorder, NotFoundTracker>();
         AddTrackingPersistence(builder.Services);
 
         // Replaces Umbraco's ContentFinderByConfigured404 as the last-chance finder. Ours asks the resolver first and

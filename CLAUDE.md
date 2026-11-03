@@ -348,10 +348,21 @@ site sets `error` in `appsettings.json`; the integration tests use `notFoundPage
 `NotFoundRequestContext(PathAndQuery, Host, Port?, IsFile)` has a `Path` property (no query);
 `NotFoundPage(IPublishedContent Content, string? Culture)`. The caller matches the domain, the resolver
 does not. Returning `null` means Umbraco's default behaviour applies. A consumer replaces it with
-`AddSingleton<INotFoundPageResolver, X>()` in a composer; the package uses `TryAddSingleton` for the
-resolver, `IRequestDomainMatcher` and `INotFoundRecorder`, so a consumer registration wins in either order
-(covered by integration tests). The resolver must be singleton-compatible: the last-chance finder is a
-singleton and holds it.
+`builder.Services.AddUnique<INotFoundPageResolver, X>()` in a composer marked
+`[ComposeAfter(typeof(PageNotFoundTrackerComposer))]` (see Composer order below). The resolver must be
+singleton-compatible: the last-chance finder is a singleton and holds it.
+
+**Composer order.** `PageNotFoundTrackerComposer` (Core, public sealed) registers nothing; it is the anchor. Every package
+composer (`InfrastructureComposer`, `BackOfficeComposer`, `SqlitePersistenceComposer`, `SqlServerPersistenceComposer`,
+all internal) is marked `[ComposeBefore(typeof(PageNotFoundTrackerComposer))]`, so all package registrations exist
+before it runs. Replaceable services (`INotFoundPageResolver`, `IRequestDomainMatcher`, the internal `INotFoundRecorder`)
+use Umbraco's `AddUnique` (last registration wins), not `TryAdd`; database providers use `AddSingleton` and the
+selector picks the last one per name. A consumer composer marked `[ComposeAfter(typeof(PageNotFoundTrackerComposer))]`
+therefore replaces any of them. A registration made **before** the package composers is overwritten by `AddUnique`.
+`TimeProvider` stays `TryAddSingleton` (a framework service the site may already register). New package composers must
+carry the same `[ComposeBefore]`. Tests: `ComposerOrderTests` (unit: attributes, AddUnique; integration: a probe composer
+in the test assembly runs after the anchor in the real composition), `NotFoundResolverReplacement*Tests`. Implementer
+documentation of this rule belongs to spec 7.
 
 `DefaultNotFoundPageResolver` rules: root = the domain's content node, or the first root without a domain.
 Alias lookup: direct children of the root first, then descendants (tree order); the first published
@@ -446,7 +457,7 @@ a change needs a restart):
 | `IncludeQueryString` | `false` | On: the query string is part of the identity (parameter order not normalised). |
 | `ChannelCapacity` | `10000` | Queue size and the bound of the pending (merge + retry) buffer; below 1 means the default. |
 
-**Flow.** Both 404 call points (spec 2) call `INotFoundRecorder`; `NotFoundTracker` (internal, `TryAddSingleton`)
+**Flow.** Both 404 call points (spec 2) call `INotFoundRecorder`; `NotFoundTracker` (internal, `AddUnique`)
 normalises the occurrence with `TrackedUrlNormalizer` and writes it to `TrackingQueue` without awaiting and without
 throwing. It does nothing when tracking is off or the persistence state is `Unavailable`. `TrackingQueue` is a bounded
 channel: when full the new hit is dropped, with at most one warning per minute stating the number dropped (the drop
@@ -502,9 +513,10 @@ than throw.
 `Microsoft.Data.Sqlite`, `Microsoft.Data.SqlClient`), `ConfigureDbContext(options, connectionString)` (provider,
 `MigrationsAssembly`, `MigrationsHistoryTable(TrackingConstants.MigrationsHistoryTable)`), optional `Upsert` (default
 interface member, `null` = the shared upsert). Built in: `SqliteTrackingDatabaseProvider` / `SqlitePersistenceComposer`
-and `SqlServerTrackingDatabaseProvider` / `SqlServerPersistenceComposer` (public sealed). Providers are registered with
-`AddSingleton` (not `TryAdd`); `TrackingDatabaseProviderSelector` picks the **last** registration for a name, so a
-composer that runs later replaces a built-in one. The SQLite provider does not set WAL (Umbraco 17 already runs SQLite
+and `SqlServerTrackingDatabaseProvider` / `SqlServerPersistenceComposer` (providers public sealed, composers internal,
+`[ComposeBefore(typeof(PageNotFoundTrackerComposer))]`). Providers are registered with `AddSingleton` (not `TryAdd`);
+`TrackingDatabaseProviderSelector` picks the **last** registration for a name, so a composer that runs after
+`PageNotFoundTrackerComposer` replaces a built-in one. The SQLite provider does not set WAL (Umbraco 17 already runs SQLite
 in WAL). A custom provider must ship migrations for **all** package tables (later specs add tables; implementers
 must follow), generated against `PageNotFoundTrackerDbContext` with an `IDesignTimeDbContextFactory`, as the built-in
 projects do. Minimal example:
@@ -522,8 +534,7 @@ public sealed class MyTrackingDatabaseProvider : ITrackingDatabaseProvider
     // Optional: public ITrackedUrlUpsert? Upsert => new MyUpsert();
 }
 
-[ComposeAfter(typeof(SqlitePersistenceComposer))]    // only needed to replace a built-in name
-[ComposeAfter(typeof(SqlServerPersistenceComposer))]
+[ComposeAfter(typeof(PageNotFoundTrackerComposer))]  // after every package registration
 public sealed class MyTrackingComposer : IComposer
 {
     public void Compose(IUmbracoBuilder builder) =>
@@ -604,7 +615,9 @@ commit that (restore with `git checkout`, see Committed databases). Committed da
   (the `copyrightText` in `src/stylecop.json`).
 - Usings outside the namespace, file-scoped namespaces, braces always.
 - XML documentation on all public and internal members.
-- Service registration through `IUmbracoBuilder` extension methods plus an `IComposer`.
+- Service registration through `IUmbracoBuilder` extension methods plus an `IComposer`. Every package composer is
+  marked `[ComposeBefore(typeof(PageNotFoundTrackerComposer))]`; services implementers may replace are registered with
+  `AddUnique`, never `TryAdd` (see Composer order).
 - Layering: Core holds settings, models and interfaces only; behaviour goes in Infrastructure; the
   Management API in BackOffice; the entry project only wires.
 - Version prefix `17.0.0` tracks the Umbraco major. Umbraco packages come only through central package

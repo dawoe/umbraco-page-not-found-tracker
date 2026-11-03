@@ -109,7 +109,6 @@ internal sealed class ProviderRegistrationTests
         var registrations = serviceCollection.Where(d => d.ServiceType == typeof(ITrackingDatabaseProvider)).ToList();
         Assert.Multiple(() =>
         {
-            Assert.That(composerType.IsPublic, Is.True, "Public so implementers can use [ComposeAfter] on it.");
             Assert.That(composerType.Assembly, Is.SameAs(providerType.Assembly));
             Assert.That(registrations, Has.Count.EqualTo(2));
             Assert.That(registrations[1].ImplementationType, Is.EqualTo(providerType));

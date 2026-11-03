@@ -3,17 +3,18 @@
 using Microsoft.Extensions.DependencyInjection;
 using Umbraco.Cms.Core.Composing;
 using Umbraco.Cms.Core.DependencyInjection;
+using Umbraco.Community.PageNotFoundTracker.Core;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 
 namespace Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer;
 
 /// <summary>
 /// Registers the SQL Server tracking database provider. It is added next to other providers (not TryAdd), so a
-/// provider registered later for the same name replaces it. To replace it with your own provider for the same name,
-/// register yours in a composer marked <c>[ComposeAfter(typeof(SqlServerPersistenceComposer))]</c>, so it is registered later
-/// and wins.
+/// provider registered later for the same name replaces it. Runs before <see cref="PageNotFoundTrackerComposer"/>, so a
+/// provider registered from a composer marked <c>[ComposeAfter(typeof(PageNotFoundTrackerComposer))]</c> wins.
 /// </summary>
-public sealed class SqlServerPersistenceComposer : IComposer
+[ComposeBefore(typeof(PageNotFoundTrackerComposer))]
+internal sealed class SqlServerPersistenceComposer : IComposer
 {
     /// <inheritdoc />
     public void Compose(IUmbracoBuilder builder) => builder.Services.AddSingleton<ITrackingDatabaseProvider, SqlServerTrackingDatabaseProvider>();

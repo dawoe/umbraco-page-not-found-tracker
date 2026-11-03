@@ -375,8 +375,10 @@ These are the writer's calls, not decisions the user made:
   - With `IncludeQueryString` on, the query string is lower-cased but not percent-decoded (the path arrives decoded
     from the call point; the normaliser does not decode).
     Parameter order is not normalised.
-  - The provider composers (`SqlitePersistenceComposer`, `SqlServerPersistenceComposer`) are public so an
-    implementer can `[ComposeAfter]` them to replace a built-in provider for the same name.
+  - Composer order (decided with the user on 2026-11-03): `PageNotFoundTrackerComposer` (Core, public) is the anchor;
+    every package composer, including the internal provider composers, is marked
+    `[ComposeBefore(typeof(PageNotFoundTrackerComposer))]`, and replaceable services use `AddUnique`. An implementer
+    replaces a service or a built-in provider from a composer marked `[ComposeAfter(typeof(PageNotFoundTrackerComposer))]`.
   - SQL Server is tested at the database layer only (migrations, upsert, concurrency) through
     `PNFT_SQLSERVER_CONNECTION`, a server-level connection string; each run creates and drops a `pnft_test_<guid>`
     database. CI uses the service container; local runs may use Docker or a LocalDB instance.
