@@ -2802,6 +2802,22 @@
           "Umbraco.Community.PageNotFoundTracker.Core": "[17.0.0, )"
         }
       },
+      "umbraco.community.pagenotfoundtracker.persistence.sqlite": {
+        "type": "Project",
+        "dependencies": {
+          "Umbraco.Cms.Core": "[17.8.0, 18.0.0)",
+          "Umbraco.Cms.Web.Website": "[17.8.0, 18.0.0)",
+          "Umbraco.Community.PageNotFoundTracker.Infrastructure": "[17.0.0, )"
+        }
+      },
+      "umbraco.community.pagenotfoundtracker.persistence.sqlserver": {
+        "type": "Project",
+        "dependencies": {
+          "Umbraco.Cms.Core": "[17.8.0, 18.0.0)",
+          "Umbraco.Cms.Web.Website": "[17.8.0, 18.0.0)",
+          "Umbraco.Community.PageNotFoundTracker.Infrastructure": "[17.0.0, )"
+        }
+      },
       "Umbraco.Cms.Api.Management": {
         "type": "CentralTransitive",
         "requested": "[17.8.0, 18.0.0)",
