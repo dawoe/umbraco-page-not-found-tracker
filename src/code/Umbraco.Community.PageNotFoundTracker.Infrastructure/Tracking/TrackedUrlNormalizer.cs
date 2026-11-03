@@ -9,12 +9,15 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
 /// <summary>
 /// Turns a <see cref="NotFoundOccurrence"/> into a normalised <see cref="TrackedUrlHit"/>.
+/// The path is expected decoded already (the call points pass the path Kestrel decoded), so it is not percent-decoded
+/// again: decoding twice would merge <c>/a%2541</c> (decoded once to <c>/a%41</c>) with <c>/aA</c>.
 /// </summary>
 internal static class TrackedUrlNormalizer
 {
     private const int MaxUrlLength = 2000;
     private const int MaxRelativePathLength = 800;
     private const int MaxDomainLength = 255;
+    private const int MaxCultureLength = 50;
 
     /// <summary>
     /// Normalises an occurrence into a hit with a count of one.
@@ -44,25 +47,15 @@ internal static class TrackedUrlNormalizer
             Truncate(RelativeTo(path, domain), MaxRelativePathLength),
             Truncate(displayUrl, MaxUrlLength),
             Truncate(domain, MaxDomainLength),
-            occurrence.Culture ?? string.Empty,
+            Truncate(occurrence.Culture ?? string.Empty, MaxCultureLength),
             occurrence.IsFile,
             1,
             utcNow,
             utcNow);
     }
 
-    private static string NormalizePath(string rawPath)
+    private static string NormalizePath(string path)
     {
-        string path;
-        try
-        {
-            path = Uri.UnescapeDataString(rawPath);
-        }
-        catch (Exception ex) when (ex is UriFormatException or ArgumentException)
-        {
-            path = rawPath;
-        }
-
         var builder = new StringBuilder(path.Length + 1);
         builder.Append('/');
         foreach (char c in path)

@@ -129,7 +129,14 @@ internal sealed class PageNotFoundLastChanceFinder : IContentLastChanceFinder
             httpContext);
     }
 
-    private static NotFoundRequestContext CreateContext(IPublishedRequestBuilder request, HttpContext? httpContext)
+    /// <summary>
+    /// Builds the request context. The path is handed over decoded, as Kestrel decodes it (everything but <c>%2F</c>),
+    /// because the tracking normaliser does not decode; the query string stays as it arrived.
+    /// </summary>
+    /// <param name="request">The published request.</param>
+    /// <param name="httpContext">The HTTP context, when there is one.</param>
+    /// <returns>The request context.</returns>
+    internal static NotFoundRequestContext CreateContext(IPublishedRequestBuilder request, HttpContext? httpContext)
     {
         if (httpContext is not null)
         {
@@ -143,11 +150,14 @@ internal sealed class PageNotFoundLastChanceFinder : IContentLastChanceFinder
         }
 
         var uri = request.Uri;
+
+        // Uri keeps the path percent-encoded; decode it the way Kestrel does (PathString keeps %2F encoded).
+        var decodedPath = PathString.FromUriComponent(uri.AbsolutePath).Value ?? "/";
         return new NotFoundRequestContext(
-            uri.PathAndQuery,
+            decodedPath + uri.Query,
             uri.Host,
             uri.IsDefaultPort ? null : uri.Port,
-            UmbracoOwnedPaths.IsFileRequest(uri.AbsolutePath));
+            UmbracoOwnedPaths.IsFileRequest(decodedPath));
     }
 
     private async Task<NotFoundPage?> ResolveAsync(NotFoundRequestContext context, Domain? domain, CancellationToken cancellationToken)

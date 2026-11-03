@@ -25,7 +25,9 @@ internal sealed class TrackedUrlNormalizerTests
     [TestCase("/a//b///", "/a/b")]
     [TestCase("/", "/")]
     [TestCase("//", "/")]
-    [TestCase("/caf%C3%A9", "/café")]
+    [TestCase("/Café", "/café")]
+    [TestCase("/caf%C3%A9", "/caf%c3%a9")]
+    [TestCase("/a%2Fb", "/a%2fb")]
     public void Normalize_Produces_Canonical_Path(string input, string expected)
     {
         TrackedUrlHit hit = TrackedUrlNormalizer.Normalize(Occurrence(input), false, Now);
@@ -48,6 +50,31 @@ internal sealed class TrackedUrlNormalizerTests
         Assert.That(a.UrlHash, Is.EqualTo(b.UrlHash));
         Assert.That(a.UrlHash, Has.Length.EqualTo(64));
         Assert.That(a.UrlHash, Does.Match("^[0-9a-f]{64}$"));
+    }
+
+    /// <summary>
+    /// The normaliser does not percent-decode (the call points pass a path that is already decoded), so an encoded
+    /// percent sign stays a different URL from the character it would decode to twice.
+    /// </summary>
+    [Test]
+    public void Normalize_Does_Not_Decode_Twice()
+    {
+        TrackedUrlHit encoded = TrackedUrlNormalizer.Normalize(Occurrence("/a%41"), false, Now);
+        TrackedUrlHit plain = TrackedUrlNormalizer.Normalize(Occurrence("/aA"), false, Now);
+
+        Assert.That(encoded.Url, Is.EqualTo("/a%41"));
+        Assert.That(encoded.UrlHash, Is.Not.EqualTo(plain.UrlHash));
+    }
+
+    /// <summary>
+    /// A culture longer than its 50 character column is truncated.
+    /// </summary>
+    [Test]
+    public void Normalize_Truncates_Long_Culture()
+    {
+        TrackedUrlHit hit = TrackedUrlNormalizer.Normalize(Occurrence("/x", "x.com", new string('c', 60)), false, Now);
+
+        Assert.That(hit.Culture, Is.EqualTo(new string('c', 50)));
     }
 
     /// <summary>
