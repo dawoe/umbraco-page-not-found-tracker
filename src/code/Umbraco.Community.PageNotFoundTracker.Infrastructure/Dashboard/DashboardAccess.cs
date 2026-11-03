@@ -27,7 +27,8 @@ internal sealed class DashboardAccess : IDashboardAccess
     /// <param name="logger">The logger.</param>
     public DashboardAccess(IOptions<PageNotFoundTrackerSettings> options, ILogger<DashboardAccess> logger)
     {
-        var configured = (options.Value.DashboardUserGroups ?? [])
+        var raw = options.Value.DashboardUserGroups;
+        var configured = (raw ?? [])
             .Select(alias => alias?.Trim())
             .Where(alias => !string.IsNullOrEmpty(alias))
             .Select(alias => alias!)
@@ -35,10 +36,15 @@ internal sealed class DashboardAccess : IDashboardAccess
 
         if (configured.Count == 0)
         {
-            logger.LogWarning(
-                "The setting {Setting} is empty or invalid, falling back to the default user groups: {Groups}.",
-                $"{Constants.SectionName}:{nameof(PageNotFoundTrackerSettings.DashboardUserGroups)}",
-                string.Join(", ", DefaultGroups));
+            // Nothing configured (an empty list) is the normal case and needs no warning; null or blank-only entries do.
+            if (raw is null || raw.Count > 0)
+            {
+                logger.LogWarning(
+                    "The setting {Setting} is invalid, falling back to the default user groups: {Groups}.",
+                    $"{Constants.SectionName}:{nameof(PageNotFoundTrackerSettings.DashboardUserGroups)}",
+                    string.Join(", ", DefaultGroups));
+            }
+
             configured = [.. DefaultGroups];
         }
 

@@ -1,8 +1,11 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using Umbraco.Community.PageNotFoundTracker.Core;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Dashboard;
 
@@ -64,20 +67,18 @@ internal sealed class DashboardAccessTests
     }
 
     /// <summary>
-    /// A null, empty or whitespace-only setting falls back to the defaults and logs one warning.
+    /// A null or whitespace-only setting falls back to the defaults and logs one warning.
     /// </summary>
     /// <param name="case">Which invalid setting to use.</param>
     [TestCase("null")]
-    [TestCase("empty")]
     [TestCase("blank")]
-    public void Constructor_NullEmptyOrWhitespaceOnlySetting_FallsBackToDefaultsAndLogsOneWarning(string @case)
+    public void Constructor_NullOrWhitespaceOnlySetting_FallsBackToDefaultsAndLogsOneWarning(string @case)
     {
         var settings = new PageNotFoundTrackerSettings
         {
             DashboardUserGroups = @case switch
             {
                 "null" => null!,
-                "empty" => [],
                 _ => [" ", string.Empty],
             },
         };
@@ -91,6 +92,54 @@ internal sealed class DashboardAccessTests
             Assert.That(access.IsAllowed(["writer"]), Is.False);
         });
         VerifyWarnings(logger, Times.Once());
+    }
+
+    /// <summary>
+    /// An empty list (nothing configured) uses the defaults without a warning.
+    /// </summary>
+    [Test]
+    public void Constructor_EmptyList_UsesDefaultsWithoutWarning()
+    {
+        var access = Create(new PageNotFoundTrackerSettings { DashboardUserGroups = [] }, out var logger);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(access.IsAllowed(["editor"]), Is.True);
+            Assert.That(access.IsAllowed(["writer"]), Is.False);
+        });
+        VerifyWarnings(logger, Times.Never());
+    }
+
+    /// <summary>
+    /// Configuration binding replaces the defaults instead of appending to them.
+    /// </summary>
+    [Test]
+    public void Binding_ConfiguredGroups_RestrictBelowTheDefaults()
+    {
+        var access = CreateBound(new Dictionary<string, string?> { ["Umbraco:Community:PageNotFoundTracker:DashboardUserGroups:0"] = "writer" });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(access.IsAllowed(["writer"]), Is.True);
+            Assert.That(access.IsAllowed(["admin"]), Is.True);
+            Assert.That(access.IsAllowed(["editor"]), Is.False);
+        });
+    }
+
+    /// <summary>
+    /// With nothing configured, binding leaves admin and editor allowed.
+    /// </summary>
+    [Test]
+    public void Binding_NothingConfigured_AdminAndEditorPass()
+    {
+        var access = CreateBound(new Dictionary<string, string?>());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(access.IsAllowed(["admin"]), Is.True);
+            Assert.That(access.IsAllowed(["editor"]), Is.True);
+            Assert.That(access.IsAllowed(["writer"]), Is.False);
+        });
     }
 
     /// <summary>
@@ -125,6 +174,17 @@ internal sealed class DashboardAccessTests
     {
         logger = new Mock<ILogger<DashboardAccess>>();
         return new DashboardAccess(Options.Create(settings), logger.Object);
+    }
+
+    private static DashboardAccess CreateBound(Dictionary<string, string?> values)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        var services = new ServiceCollection();
+        services.AddOptions<PageNotFoundTrackerSettings>().Bind(config.GetSection(Constants.SectionName));
+        using var provider = services.BuildServiceProvider();
+        return new DashboardAccess(
+            provider.GetRequiredService<IOptions<PageNotFoundTrackerSettings>>(),
+            new Mock<ILogger<DashboardAccess>>().Object);
     }
 
     private static void VerifyWarnings(Mock<ILogger<DashboardAccess>> logger, Times times) =>
