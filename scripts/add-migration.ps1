@@ -3,7 +3,7 @@
 #   pwsh scripts/add-migration.ps1 -Name <MigrationName>
 #
 # Each provider project has a design-time factory, so no running site or database is needed.
-# The build stays at zero analyzer warnings because src/.editorconfig marks Migrations/*.cs as generated code
+# The build stays at zero analyzer warnings because src/.editorconfig marks the provider Migrations/*.cs as generated code
 # (StyleCop and the missing-XML-doc warning CS1591 skip generated code). The script still prepends the StyleCop
 # copyright header, the project convention for every C# file, to each new file and to the rewritten model snapshot.
 param(

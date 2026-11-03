@@ -15,7 +15,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<P
     public PageNotFoundTrackerDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>();
-        new SqliteTrackingDatabaseProvider().ConfigureDbContext(options, "Data Source=design-time.sqlite.db");
+        new SqliteTrackingDatabaseProvider().ConfigureDbContext(options, "Data Source=:memory:");
         return new PageNotFoundTrackerDbContext(options.Options);
     }
 }

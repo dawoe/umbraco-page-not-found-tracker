@@ -90,24 +90,27 @@ internal sealed class ProviderRegistrationTests
     /// <summary>
     /// The composer of each provider adds the provider next to existing ones (Add, not TryAdd).
     /// </summary>
+    /// <param name="composerType">The composer type.</param>
     /// <param name="providerType">The provider type.</param>
-    [TestCase(typeof(SqliteTrackingDatabaseProvider))]
-    [TestCase(typeof(SqlServerTrackingDatabaseProvider))]
-    public void Composer_Adds_Provider_Alongside_Existing_Registrations(Type providerType)
+    [TestCase(typeof(SqlitePersistenceComposer), typeof(SqliteTrackingDatabaseProvider))]
+    [TestCase(typeof(SqlServerPersistenceComposer), typeof(SqlServerTrackingDatabaseProvider))]
+    public void Composer_Adds_Provider_Alongside_Existing_Registrations(Type composerType, Type providerType)
     {
+        ArgumentNullException.ThrowIfNull(composerType);
         ArgumentNullException.ThrowIfNull(providerType);
 
         var serviceCollection = new ServiceCollection();
         serviceCollection.AddSingleton(Mock.Of<ITrackingDatabaseProvider>());
         var builder = new UmbracoBuilder(serviceCollection, new ConfigurationBuilder().Build(), new TypeLoader(Mock.Of<ITypeFinder>(), Mock.Of<ILogger<TypeLoader>>()));
 
-        var composerType = providerType.Assembly.GetTypes().Single(t => typeof(IComposer).IsAssignableFrom(t) && !t.IsAbstract);
-        var composer = (IComposer)Activator.CreateInstance(composerType, nonPublic: true)!;
+        var composer = (IComposer)Activator.CreateInstance(composerType)!;
         composer.Compose(builder);
 
         var registrations = serviceCollection.Where(d => d.ServiceType == typeof(ITrackingDatabaseProvider)).ToList();
         Assert.Multiple(() =>
         {
+            Assert.That(composerType.IsPublic, Is.True, "Public so implementers can use [ComposeAfter] on it.");
+            Assert.That(composerType.Assembly, Is.SameAs(providerType.Assembly));
             Assert.That(registrations, Has.Count.EqualTo(2));
             Assert.That(registrations[1].ImplementationType, Is.EqualTo(providerType));
             Assert.That(registrations[1].Lifetime, Is.EqualTo(ServiceLifetime.Singleton));

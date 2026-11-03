@@ -9,9 +9,11 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer;
 
 /// <summary>
 /// Registers the SQL Server tracking database provider. It is added next to other providers (not TryAdd), so a
-/// provider registered later for the same name replaces it.
+/// provider registered later for the same name replaces it. To replace it with your own provider for the same name,
+/// register yours in a composer marked <c>[ComposeAfter(typeof(SqlServerPersistenceComposer))]</c>, so it is registered later
+/// and wins.
 /// </summary>
-internal sealed class SqlServerPersistenceComposer : IComposer
+public sealed class SqlServerPersistenceComposer : IComposer
 {
     /// <inheritdoc />
     public void Compose(IUmbracoBuilder builder) => builder.Services.AddSingleton<ITrackingDatabaseProvider, SqlServerTrackingDatabaseProvider>();
