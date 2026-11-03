@@ -17,8 +17,9 @@ export const PNFT_DEFAULT_TAKE = 20;
  *
  * - Missing paging and order fall back to skip 0, take 20, hits descending.
  * - A blank search is left out.
- * - The `PNFT_EMPTY` marker becomes `noDomain=true` / `noCulture=true`; any string (also one that
- *   reads like a marker word) is sent as a value; undefined or an empty string means all.
+ * - The `PNFT_EMPTY` marker (a string starting with U+0000) becomes `noDomain=true` / `noCulture=true`;
+ *   any other string (also one that reads like a marker word, such as `empty`) is sent as a value;
+ *   undefined or an empty string means all.
  */
 export function buildListQuery(filter: Partial<PnftCollectionFilter>): PnftListQuery {
   const query: PnftListQuery = {

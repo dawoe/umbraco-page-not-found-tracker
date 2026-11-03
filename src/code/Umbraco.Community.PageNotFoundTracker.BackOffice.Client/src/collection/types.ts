@@ -3,13 +3,16 @@ import type { PNFT_TRACKED_URL_ENTITY_TYPE } from '../entity.js';
 
 /**
  * Marks the "empty" choice of the domain and culture filters (URLs without a domain or culture).
- * A unique symbol, never a string, so a domain or culture whose text happens to look like a marker
- * word is still sent as a value.
+ *
+ * A string, so it survives `JSON.stringify`: Umbraco's `UmbDeepState` only emits when the serialised value
+ * changes, and a symbol would serialise like "All". It starts with U+0000, which no Umbraco domain name or
+ * culture code contains, so a real domain or culture whose text looks like a marker word (`empty`, `all`)
+ * is still sent as a value.
  */
-export const PNFT_EMPTY: unique symbol = Symbol('pnft-empty');
+export const PNFT_EMPTY = '\u0000empty';
 
-/** The value of the domain or culture filter: a value, the "empty" marker, or undefined for all. */
-export type PnftFilterValue = string | typeof PNFT_EMPTY;
+/** The value of the domain or culture filter: a value, the {@link PNFT_EMPTY} marker, or undefined for all. */
+export type PnftFilterValue = string;
 
 /** The filter the collection passes to the repository. */
 export interface PnftCollectionFilter {

@@ -47,6 +47,16 @@ describe('toChoiceValue / fromChoiceValue', () => {
     expect(fromChoiceValue(toChoiceValue('nl-NL'))).toBe('nl-NL');
   });
 
+  it('fromChoiceValue_EmptyIsTheMarker_ARealValueNamedEmptyOrAllIsAValue', () => {
+    expect(fromChoiceValue('empty')).toBe(PNFT_EMPTY);
+    expect(fromChoiceValue('v:empty')).toBe('empty');
+    expect(fromChoiceValue('v:all')).toBe('all');
+    expect(fromChoiceValue('v:empty')).not.toBe(PNFT_EMPTY);
+    expect(toChoiceValue('empty')).toBe('v:empty');
+    expect(toChoiceValue('all')).toBe('v:all');
+    expect(toChoiceValue(PNFT_EMPTY)).toBe('empty');
+  });
+
   it('fromChoiceValue_UnknownTextIsAll', () => {
     expect(fromChoiceValue('nonsense')).toBeUndefined();
     expect(fromChoiceValue(undefined)).toBeUndefined();

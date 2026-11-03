@@ -9,6 +9,7 @@ import {
   withPageReset,
 } from './state';
 import { PNFT_EMPTY } from './types';
+import { fromChoiceValue } from './filters/filter-choices';
 
 describe('classifyError', () => {
   it('classifyError_503IsUnavailable', () => {
@@ -50,8 +51,35 @@ describe('isFilterActive', () => {
     expect(isFilterActive({ culture: PNFT_EMPTY })).toBe(true);
   });
 
+  it('isFilterActive_AValueNamedLikeAChoiceWordIsActive', () => {
+    expect(isFilterActive({ domain: 'empty' })).toBe(true);
+    expect(isFilterActive({ culture: 'all' })).toBe(true);
+  });
+
   it('isFilterActive_EmptyStringDomainOrCultureMeansAll', () => {
     expect(isFilterActive({ domain: '', culture: '' })).toBe(false);
+  });
+});
+
+describe('filter state serialisation', () => {
+  // Umbraco's UmbDeepState only emits when JSON.stringify of the new value differs, so every filter choice
+  // must serialise differently or the change is invisible to the observers.
+  const serialise = (choice: string) =>
+    JSON.stringify({ skip: 0, take: 20, domain: fromChoiceValue(choice), culture: fromChoiceValue(choice) });
+
+  it('filterState_EachChoiceSerialisesDifferently', () => {
+    const all = serialise('all');
+    const empty = serialise('empty');
+    const value = serialise('v:empty');
+
+    expect(new Set([all, empty, value]).size).toBe(3);
+  });
+
+  it('filterState_AllToNoDomainToAll_ChangesEachStep', () => {
+    const steps = ['all', 'empty', 'all'].map(serialise);
+
+    expect(steps[1]).not.toBe(steps[0]);
+    expect(steps[2]).not.toBe(steps[1]);
   });
 });
 

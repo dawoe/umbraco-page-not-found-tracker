@@ -65,14 +65,14 @@ describe('buildListQuery', () => {
     expect(buildListQuery({ search: 'wp-admin' }).search).toBe('wp-admin');
   });
 
+  it('buildListQuery_TheMarkerIsAJsonSerialisableString', () => {
+    // A string survives JSON.stringify, so Umbraco's state (which only emits when the JSON differs) sees the change.
+    expect(typeof PNFT_EMPTY).toBe('string');
+    expect(JSON.parse(JSON.stringify({ domain: PNFT_EMPTY }))).toStrictEqual({ domain: PNFT_EMPTY });
+  });
+
   it('buildListQuery_ADomainTextEqualToTheMarkerWordIsSentAsAValue', () => {
-    expect(typeof PNFT_EMPTY).not.toBe('string');
-
-    for (const marker of ['PNFT_EMPTY', 'pnft-empty', 'empty', String(PNFT_EMPTY), PNFT_EMPTY.description ?? '']) {
-      if (marker === '') {
-        continue;
-      }
-
+    for (const marker of ['PNFT_EMPTY', 'pnft-empty', 'empty', 'all', 'v:empty', PNFT_EMPTY.replace('\u0000', '')]) {
       const query = buildListQuery({ domain: marker, culture: marker });
 
       expect(query.domain).toBe(marker);
