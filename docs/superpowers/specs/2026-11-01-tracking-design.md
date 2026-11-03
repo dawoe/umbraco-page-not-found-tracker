@@ -1,6 +1,6 @@
 # Spec 3: Tracking of 404 URLs
 
-Status: draft, awaiting builder check and approval
+Status: builder check done, awaiting approval (issue #3, branch `feature/3-tracking`)
 Depends on: spec 1 (solution setup), spec 2 (404 handling)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 
@@ -51,6 +51,12 @@ count.
 - Same database as Umbraco (the connection string `umbracoDbDSN`). The table name carries a
   package prefix so it cannot clash with other tables.
 - StyleCop and the other conventions from spec 1 apply.
+- Packaging: `Umbraco.Cms.Persistence.EFCore` (`[17.8.0,18.0.0)`, central package management)
+  is a new package reference. It brings EF Core and both EF Core providers at Umbraco's own
+  version. Because sibling projects are `PrivateAssets=all`, it must be mirrored in the entry
+  csproj, and the two persistence projects must be added to the entry project's packed dlls
+  and to `check-package.ps1`. `Microsoft.EntityFrameworkCore.Design` (for the migrations
+  script) is a development-only reference and must not flow to consumers.
 
 ## Approaches considered
 
@@ -63,6 +69,27 @@ and in `umbraco-pagespeed-optimization`, which use the same pattern:
 - B. Umbraco's own NPoco migrations. Rejected: implementers could not add databases.
 - C. EF Core with one shared migration set. Rejected: EF Core migrations are provider
   specific, so one set breaks on one of the two databases.
+
+Plumbing inside approach A (decided with the user on 2026-11-03, issue #3):
+
+- A1. Own plumbing, as Merchello: the package reads `umbracoDbDSN`, resolves `|DataDirectory|`
+  itself, and the provider contract matches, configures, migrates and upserts. Rejected: it
+  duplicates Umbraco's connection handling, and a mismatch would point SQLite at a different
+  file than Umbraco.
+- **A2. Build on Umbraco's EF Core support. Chosen.** The `DbContext` is registered with
+  `AddUmbracoDbContext<T>` from `Umbraco.Cms.Persistence.EFCore` (the overload that passes
+  the resolved connection string and provider name). The provider contract shrinks to the
+  provider name, configuring the options (`UseSqlite`/`UseSqlServer` with its own
+  migrations assembly and history table) and an optional upsert override. The default
+  upsert is shared EF Core code that works on every provider (see Background flush). EF Core
+  comes in through `Umbraco.Cms.Persistence.EFCore`, so its version always matches
+  Umbraco's (10.0.x for 17.8).
+- A3. A2 with native upsert SQL per provider (`INSERT … ON CONFLICT` on SQLite,
+  `MERGE WITH (HOLDLOCK)` on SQL Server). Rejected: raw SQL in two places and every custom
+  provider would have to write its own. The upsert override keeps this possible later.
+
+Delivery (decided with the user): everything in this spec lands in one pull request,
+including the SQL Server profile and the CI changes.
 
 Packaging (decided with the user): both providers ship inside the single NuGet package
 from spec 1, and the matching one is chosen at runtime from the connection string. The
@@ -110,6 +137,11 @@ Two requests count as the same URL when domain, culture and the normalised URL m
 - The write is an additive upsert: a new URL becomes a new record, an existing one gets its
   hit count increased and its last-seen time moved forward. The increase must be atomic in
   the database, so several servers writing to the same table do not lose counts.
+- Default upsert (approach A2): for the merged batch, first an EF Core `ExecuteUpdate`
+  that sets `HitCount = HitCount + n` and `LastSeen = max(LastSeen, batch last seen)` for
+  identities that exist, then an insert of the identities that matched no row. If an insert
+  hits the unique index because another server inserted the same identity in between, the
+  update is retried once for those identities. A provider can replace this code path.
 - A failed write is logged and the batch is retried at the next interval, up to a bounded
   amount of memory. Beyond that, the oldest entries are dropped.
 - When the application stops, the service flushes what is pending before it exits, within
@@ -154,11 +186,18 @@ Migrations still run, so enabling tracking later works immediately. (Writer's ca
 `.Core` defines a provider contract with, at least:
 
 - the Umbraco database provider name it supports (for example `Microsoft.Data.Sqlite`),
-- how to configure the `DbContext` options, including the migrations assembly,
-- how to run migrations.
+- how to configure the `DbContext` options from the connection string Umbraco resolved,
+  including the migrations assembly and the package-prefixed history table,
+- optionally, its own additive upsert (otherwise the shared default is used).
 
-Exact members are left to the builder, following Merchello's pair of provider interfaces as
-a reference.
+Connection string and provider name come from `AddUmbracoDbContext<T>`, so the contract does
+not read configuration. Migrations run through the shared `DbContext` (`Database.MigrateAsync`)
+once the provider has configured it, so the contract needs no migrate member unless a
+database needs one. Exact members are left to the builder, with Merchello's pair of
+provider interfaces as a reference.
+
+If the contract needs EF Core types (`DbContextOptionsBuilder`), `.Core` takes a dependency on
+EF Core abstractions; that is acceptable for this contract (writer's call).
 
 ### Built-in providers
 
@@ -210,9 +249,12 @@ pending model changes, so the two migration sets cannot drift apart.
   queued records, channel overflow, flush timing and the interval setting, shutdown flush,
   disabled tracking, provider selection including the unknown provider case, and a custom
   provider being picked up.
-- **Integration tests:** on SQLite and SQL Server: migrations apply to an empty database,
-  the upsert creates and then increments, concurrent flushes do not lose counts, and an
-  end-to-end 404 request ends up as a record after a flush.
+- **Integration tests:** on SQLite and SQL Server, against the package's `DbContext` only
+  (no Umbraco boot on SQL Server, decided with the user on 2026-11-03): migrations apply to an
+  empty database, the upsert creates and then increments, and concurrent flushes do not lose
+  counts. On SQLite only, with Umbraco booted as in spec 2's tests: an end-to-end 404 request
+  ends up as a record after a forced flush. The full site on SQL Server is proven manually
+  through the `sql-server` launch profile.
 - **E2E:** none needed beyond spec 2's. A 404 request followed by a forced flush is covered
   in integration tests.
 
@@ -245,8 +287,9 @@ These are the writer's calls, not decisions the user made:
   even if the finder or the re-rendered page runs more than once. Any method that reaches
   the call points counts, so HEAD requests count.
 - Stored URL: the full path as the visitor requested it, including any alias prefix such as
-  `/siteA`. `Domain` stores the matched Umbraco domain name exactly as configured (for
-  example `localhost/siteA` or `www.siteA.local`), or an empty string. Specs 4 and 5 can
+  `/siteA`. `Domain` stores the matched Umbraco domain name exactly as Umbraco returns it
+  (stored lowercase with the port in the test site, for example `localhost:44402/sitea` or
+  `www.sitea.local:44404`), or an empty string. Specs 4 and 5 can
   derive the path relative to the domain from these two.
 - Normalisation: the percent-encoded form is decoded before comparing, then compared
   ignoring case (invariant culture) with a trailing slash and repeated slashes ignored.
@@ -273,11 +316,12 @@ These are the writer's calls, not decisions the user made:
   query string. It is not part of the unique identity.
 - "File" in the `IsFile` column means the last segment of the request path has a file
   extension, in both code paths, as defined in spec 2.
-- Discarding queued hits (needed by specs 5 and 6): the flush drains the channel into an
-  in-memory merge buffer under a lock. The tracker exposes a discard operation over that
-  buffer, the retry buffer and the batch in flight, taking either an identity or, for spec 6,
-  a path pattern with a domain and culture scope. The discard and the flush are serialised so
-  they cannot interleave. A channel itself cannot remove items, which is why the buffer exists.
+- Discarding queued hits (needed by specs 5 and 6): this spec only prepares for it (decided
+  with the user on 2026-11-03). The flush drains the channel into an in-memory merge buffer,
+  and the merge buffer, the retry buffer and the batch in flight are guarded by one lock that
+  a later discard can take, so a discard and a flush can be serialised. No discard operation
+  is added here: spec 5 adds it for a URL identity and spec 6 extends it to path patterns. A
+  channel itself cannot remove items, which is why the buffer exists.
 - Persistence availability: the package has one state, "persistence available", true only
   when a provider matched and migrations completed. When it is false, tracking is off, the
   dashboards and endpoints of specs 4 to 6 report a clear "database unsupported or
@@ -288,6 +332,12 @@ These are the writer's calls, not decisions the user made:
 - Committed SQLite databases hold no tracked rows. Running the site dirties them (migrations,
   WAL), and contributors reset them with `git checkout`, as spec 1 documents for other
   incidental changes. E2E runs that create tracked data must never commit it.
+
+- After the builder check (2026-11-03), writer's calls: the `DbContext` and entity are public so
+  custom providers can build migrations against them; when two providers register the same
+  name, the last registration wins (so an implementer can replace a built-in one); hits that
+  arrive before migrations finish are queued as usual and flushed once the startup gate opens;
+  with `IncludeQueryString` off, `DisplayUrl` holds the path without the query string.
 
 ## Acceptance
 
