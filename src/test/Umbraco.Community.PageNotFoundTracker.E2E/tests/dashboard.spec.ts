@@ -62,16 +62,19 @@ async function expectRowsMatching(page: Page, term: string, count: number, timeo
 }
 
 /**
- * Opens the dashboard and searches for `term` until `count` rows show. Reloads between attempts: that absorbs
- * the flush interval (the list is only as fresh as the last flush) and a backoffice that loads blank on a direct
- * link in a headless browser.
+ * Opens the dashboard and searches for `term` until `count` rows show (and, when given, the total shows
+ * `expectedTotal`). Reloads between attempts: that absorbs the flush interval (the list is only as fresh as the
+ * last flush) and a backoffice that loads blank on a direct link in a headless browser.
  */
-async function openAndSearch(page: Page, term: string, count: number): Promise<void> {
+async function openAndSearch(page: Page, term: string, count: number, expectedTotal?: string): Promise<void> {
   await expect(async () => {
     await page.goto(DASHBOARD_PATH);
     await expect(page.getByTestId(MARKS.collection)).toBeVisible({ timeout: 20_000 });
     await search(page, term);
     await expectRowsMatching(page, term, count, 5_000);
+    if (expectedTotal !== undefined) {
+      await expect(page.getByTestId(MARKS.total)).toHaveText(expectedTotal, { timeout: 5_000 });
+    }
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000] });
 }
 
@@ -88,9 +91,12 @@ async function expectCurrentPage(page: Page, pageNumber: number): Promise<void> 
   await expect(pager(page)).toHaveAccessibleName(`Pagination navigation. Current page: ${pageNumber}.`);
 }
 
-/** Opens the pager search and moves to page 2 (2 of the 22 pager rows). */
+/**
+ * Opens the pager search and moves to page 2 (2 of the 22 pager rows). Waits for "22 URLs" first: page 1 can
+ * already show 20 rows while the last flush has not written all 22, and then there is no page 2 yet.
+ */
 async function openPagerPage2(page: Page): Promise<void> {
-  await openAndSearch(page, pagerPrefix, 20);
+  await openAndSearch(page, pagerPrefix, 20, '22 URLs');
   await pager(page).getByRole('button', { name: 'Go to page 2' }).click();
   await expectRowsMatching(page, pagerPrefix, 2);
   await expectCurrentPage(page, 2);
@@ -114,6 +120,7 @@ test.describe('tracked URL dashboard', () => {
     await openAndSearch(page, prefix, 4);
 
     const urls = await rowUrls(page);
+    // The default sort is hits descending with ties by ascending id.
     // a has 3 hits, b 2; c and the file have 1 each (their order is the tie-break by id).
     expect(urls.slice(0, 2)).toEqual([pathA, pathB]);
     expect([...urls.slice(2)].sort()).toEqual([pathC, pathFile].sort());
@@ -133,6 +140,7 @@ test.describe('tracked URL dashboard', () => {
     await openAndSearch(page, prefix, 4);
     const ascending = [pathA, pathB, pathC, pathFile];
 
+    // The first click on the URL header sorts ascending (from the default hits descending), the second descending.
     await page.getByTestId(MARKS.sortUrl).click();
     await expect.poll(() => rowUrls(page)).toEqual(ascending);
 
@@ -186,6 +194,7 @@ test.describe('tracked URL dashboard', () => {
     // Page 1 has 20 rows and page 2 has 2, so the row count tells the pages apart.
     await test.step('sort', async () => {
       await openPagerPage2(page);
+      // The first click on the URL header sorts ascending, so page 1 holds pager URLs 01 to 20.
       await page.getByTestId(MARKS.sortUrl).click();
       await expect.poll(() => rowUrls(page)).toEqual(pagerPaths.slice(0, 20));
       await expectCurrentPage(page, 1);
