@@ -8,6 +8,7 @@ using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Core.NotFound;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Extensions;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
 namespace Umbraco.Community.PageNotFoundTracker.Integration.Tests;
 
@@ -42,7 +43,7 @@ internal sealed class NotFoundRegistrationTests : UmbracoIntegrationTest
         {
             Assert.That(this.GetRequiredService<INotFoundPageResolver>(), Is.TypeOf<DefaultNotFoundPageResolver>());
             Assert.That(this.GetRequiredService<IRequestDomainMatcher>(), Is.TypeOf<RequestDomainMatcher>());
-            Assert.That(this.GetRequiredService<INotFoundRecorder>(), Is.TypeOf<NoOpNotFoundRecorder>());
+            Assert.That(this.GetRequiredService<INotFoundRecorder>(), Is.TypeOf<NotFoundTracker>());
         });
     }
 }

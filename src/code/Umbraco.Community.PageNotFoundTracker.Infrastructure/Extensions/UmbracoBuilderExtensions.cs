@@ -6,7 +6,9 @@ using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Community.PageNotFoundTracker.Core;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Core.NotFound;
+using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 using Umbraco.Extensions;
 
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Extensions;
@@ -31,7 +33,11 @@ internal static class UmbracoBuilderExtensions
 
         builder.Services.TryAddSingleton<INotFoundPageResolver, DefaultNotFoundPageResolver>();
         builder.Services.TryAddSingleton<IRequestDomainMatcher, RequestDomainMatcher>();
-        builder.Services.TryAddSingleton<INotFoundRecorder, NoOpNotFoundRecorder>();
+        builder.Services.TryAddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<TrackingQueue>();
+        builder.Services.AddSingleton<TrackingPersistenceState>();
+        builder.Services.AddSingleton<ITrackingPersistenceState>(sp => sp.GetRequiredService<TrackingPersistenceState>());
+        builder.Services.TryAddSingleton<INotFoundRecorder, NotFoundTracker>();
 
         // Replaces Umbraco's ContentFinderByConfigured404 as the last-chance finder. Ours asks the resolver first and
         // delegates to Umbraco's finder when nothing resolves, so the built-in behaviour is kept, not removed.

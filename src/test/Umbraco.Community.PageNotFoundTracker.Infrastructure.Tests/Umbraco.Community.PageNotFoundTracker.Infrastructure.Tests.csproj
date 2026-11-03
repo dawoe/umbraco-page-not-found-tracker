@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker/Umbraco.Community.PageNotFoundTracker.csproj" />
   </ItemGroup>

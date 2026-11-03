@@ -3,7 +3,7 @@
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 
 /// <summary>
-/// Records requests that ended in a 404. Spec 3 (tracking) replaces the default no-op implementation.
+/// Records requests that ended in a 404. The default implementation queues the occurrence for tracking (spec 3); a consumer can replace it.
 /// </summary>
 internal interface INotFoundRecorder
 {
