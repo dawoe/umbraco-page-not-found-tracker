@@ -1,0 +1,472 @@
+// Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
+
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
+using Moq;
+using Umbraco.Cms.Core.Configuration.Models;
+using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
+using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests.TestSupport;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
+
+namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests;
+
+/// <summary>
+/// Unit tests for the <see cref="TrackingFlushService"/> class.
+/// </summary>
+[TestFixture]
+internal sealed class TrackingFlushServiceTests
+{
+    private const string ProviderName = "Microsoft.Data.Sqlite";
+
+    private static readonly DateTime T0 = new(2026, 11, 3, 10, 0, 0, DateTimeKind.Utc);
+    private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(5);
+
+    private TimerAwareTimeProvider time = null!;
+    private TrackingQueue queue = null!;
+    private TrackingPersistenceState state = null!;
+    private RecordingUpsert upsert = null!;
+    private Mock<IDbContextFactory<PageNotFoundTrackerDbContext>> factory = null!;
+    private TrackingFlushService? service;
+
+    /// <summary>
+    /// Creates the shared fakes.
+    /// </summary>
+    [SetUp]
+    public void SetUp()
+    {
+        this.time = new TimerAwareTimeProvider(new DateTimeOffset(T0));
+        this.queue = new TrackingQueue(
+            Options.Create(new PageNotFoundTrackerSettings()),
+            this.time,
+            NullLogger<TrackingQueue>.Instance);
+        this.state = new TrackingPersistenceState();
+        this.upsert = new RecordingUpsert();
+        this.factory = new Mock<IDbContextFactory<PageNotFoundTrackerDbContext>>();
+        this.factory.Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new PageNotFoundTrackerDbContext(new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>().Options));
+        this.factory.Setup(f => f.CreateDbContext())
+            .Returns(() => new PageNotFoundTrackerDbContext(new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>().Options));
+    }
+
+    /// <summary>
+    /// Stops the service.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [TearDown]
+    public async Task TearDown()
+    {
+        if (this.service is not null)
+        {
+            await this.service.StopAsync(CancellationToken.None);
+            this.service.Dispose();
+            this.service = null;
+        }
+    }
+
+    /// <summary>
+    /// Nothing is written before the interval elapses; one write after it.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Flushes_Once_After_Interval()
+    {
+        this.state.SetAvailable();
+        this.service = this.CreateService();
+        await this.service.StartAsync(CancellationToken.None);
+        await this.time.TimerCreated.WaitAsync(WaitTimeout);
+        this.queue.TryEnqueue(Hit("/a"));
+
+        this.time.Advance(TimeSpan.FromMinutes(1) - TimeSpan.FromSeconds(1));
+        await Task.Delay(100);
+        Assert.That(this.upsert.Calls, Is.Empty);
+
+        this.time.Advance(TimeSpan.FromSeconds(1));
+        await this.upsert.WaitForCallsAsync(1, WaitTimeout);
+
+        Assert.That(this.upsert.Calls, Has.Count.EqualTo(1));
+        Assert.That(this.upsert.Calls[0].Single().Url, Is.EqualTo("/a"));
+    }
+
+    /// <summary>
+    /// A 30 second interval flushes twice in one minute.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Interval_Of_30_Seconds_Flushes_Twice_Per_Minute()
+    {
+        this.state.SetAvailable();
+        this.service = this.CreateService(new PageNotFoundTrackerSettings { FlushInterval = TimeSpan.FromSeconds(30) });
+        await this.service.StartAsync(CancellationToken.None);
+        await this.time.TimerCreated.WaitAsync(WaitTimeout);
+
+        this.queue.TryEnqueue(Hit("/a"));
+        this.time.Advance(TimeSpan.FromSeconds(30));
+        await this.upsert.WaitForCallsAsync(1, WaitTimeout);
+
+        this.queue.TryEnqueue(Hit("/b"));
+        this.time.Advance(TimeSpan.FromSeconds(30));
+        await this.upsert.WaitForCallsAsync(2, WaitTimeout);
+
+        Assert.That(this.upsert.Calls.Select(c => c.Single().Url), Is.EqualTo(new[] { "/a", "/b" }));
+    }
+
+    /// <summary>
+    /// A failed write keeps the hits pending and sends them with the next flush.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Failed_Upsert_Keeps_Hits_For_Next_Flush()
+    {
+        this.state.SetAvailable();
+        this.service = this.CreateService();
+        this.upsert.FailNext = true;
+        this.queue.TryEnqueue(Hit("/a"));
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.upsert.Calls, Has.Count.EqualTo(1));
+        Assert.That(this.queue.PendingCount, Is.EqualTo(1));
+
+        this.queue.TryEnqueue(Hit("/a"));
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.upsert.Calls, Has.Count.EqualTo(2));
+        Assert.That(this.upsert.Calls[1].Single().Count, Is.EqualTo(2));
+        Assert.That(this.queue.PendingCount, Is.EqualTo(0));
+    }
+
+    /// <summary>
+    /// A cancelled write keeps the hits pending (the batch is always completed).
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Cancelled_Upsert_Keeps_Hits_Pending()
+    {
+        this.state.SetAvailable();
+        this.service = this.CreateService();
+        this.upsert.CancelNext = true;
+        this.queue.TryEnqueue(Hit("/a"));
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.queue.PendingCount, Is.EqualTo(1));
+    }
+
+    /// <summary>
+    /// An empty batch does not touch the database.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Empty_Batch_Touches_No_Database()
+    {
+        this.state.SetAvailable();
+        this.service = this.CreateService();
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.upsert.Calls, Is.Empty);
+        this.factory.Verify(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()), Times.Never);
+        this.factory.Verify(f => f.CreateDbContext(), Times.Never);
+    }
+
+    /// <summary>
+    /// Stopping the service flushes the pending hits.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task StopAsync_Flushes_Pending_Hits()
+    {
+        this.state.SetAvailable();
+        var flushService = this.CreateService();
+        await flushService.StartAsync(CancellationToken.None);
+        this.queue.TryEnqueue(Hit("/a"));
+
+        await flushService.StopAsync(CancellationToken.None);
+        flushService.Dispose();
+
+        Assert.That(this.upsert.Calls, Has.Count.EqualTo(1));
+        Assert.That(this.upsert.Calls[0].Single().Url, Is.EqualTo("/a"));
+    }
+
+    /// <summary>
+    /// Disabled tracking writes nothing and the background loop ends.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Disabled_Tracking_Writes_Nothing_And_Completes()
+    {
+        this.state.SetAvailable();
+        this.service = this.CreateService(new PageNotFoundTrackerSettings { TrackingEnabled = false });
+        await this.service.StartAsync(CancellationToken.None);
+        this.queue.TryEnqueue(Hit("/a"));
+
+        await this.service.ExecuteTask!.WaitAsync(WaitTimeout);
+        this.time.Advance(TimeSpan.FromMinutes(5));
+        await Task.Delay(100);
+
+        Assert.That(this.upsert.Calls, Is.Empty);
+    }
+
+    /// <summary>
+    /// An unavailable persistence (the gate returns false) writes nothing and the background loop ends.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Unavailable_Persistence_Writes_Nothing()
+    {
+        this.state.SetUnavailable();
+        this.service = this.CreateService();
+        await this.service.StartAsync(CancellationToken.None);
+        this.queue.TryEnqueue(Hit("/a"));
+
+        await this.service.ExecuteTask!.WaitAsync(WaitTimeout);
+        this.time.Advance(TimeSpan.FromMinutes(5));
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.upsert.Calls, Is.Empty);
+    }
+
+    /// <summary>
+    /// When the upsert reports one failed hit, only that hit is sent in the next flush (the written ones are not
+    /// counted twice).
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Partly_Failed_Upsert_Resends_Only_Failed_Hit()
+    {
+        this.state.SetAvailable();
+        this.service = this.CreateService();
+        this.upsert.FailUrlNext = "/b";
+        this.queue.TryEnqueue(Hit("/a"));
+        this.queue.TryEnqueue(Hit("/b"));
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.upsert.Calls[0], Has.Length.EqualTo(2));
+        Assert.That(this.queue.PendingCount, Is.EqualTo(1));
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.upsert.Calls, Has.Count.EqualTo(2));
+        Assert.That(this.upsert.Calls[1].Single().Url, Is.EqualTo("/b"));
+        Assert.That(this.upsert.Calls[1].Single().Count, Is.EqualTo(1));
+        Assert.That(this.queue.PendingCount, Is.EqualTo(0));
+    }
+
+    /// <summary>
+    /// With a failing database the generic upsert stops early, and the flush logs one summary warning with the first
+    /// exception, keeping every hit pending.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Failing_Database_Logs_One_Warning_And_Keeps_All_Hits()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        var options = new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>().UseSqlite(connection).Options;
+        this.factory.Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new PageNotFoundTrackerDbContext(options));
+        var upsertLogger = new CapturingLogger<DefaultTrackedUrlUpsert>();
+        var flushLogger = new CapturingLogger<TrackingFlushService>();
+        this.state.SetAvailable();
+        this.service = this.CreateService(useDefaultUpsert: true, flushLogger: flushLogger, upsertLogger: upsertLogger);
+        for (int i = 0; i < 20; i++)
+        {
+            this.queue.TryEnqueue(Hit("/" + i));
+        }
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(flushLogger.Warnings, Has.Count.EqualTo(1));
+            Assert.That(flushLogger.WarningExceptions[0], Is.Not.Null);
+            Assert.That(upsertLogger.Warnings, Is.Empty);
+            Assert.That(upsertLogger.Debugs.Count(m => m.Contains("could not be written", StringComparison.Ordinal)), Is.LessThanOrEqualTo(DefaultTrackedUrlUpsert.MaxConsecutiveFailures));
+            Assert.That(this.queue.PendingCount, Is.EqualTo(20));
+        });
+    }
+
+    /// <summary>
+    /// A cancelled upsert that returns the hits it did not write gets only those restored, without a warning.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Cancelled_Upsert_Restores_Only_Returned_Hits()
+    {
+        var flushLogger = new CapturingLogger<TrackingFlushService>();
+        this.state.SetAvailable();
+        this.service = this.CreateService(flushLogger: flushLogger);
+        using var cts = new CancellationTokenSource();
+        this.upsert.CancelAndReturnUrlNext = ("/b", cts);
+        this.queue.TryEnqueue(Hit("/a"));
+        this.queue.TryEnqueue(Hit("/b"));
+
+        await this.service.FlushAsync(cts.Token);
+
+        Assert.That(this.queue.PendingCount, Is.EqualTo(1));
+        Assert.That(this.queue.TakeBatch().Single().Url, Is.EqualTo("/b"));
+        Assert.That(flushLogger.Warnings, Is.Empty);
+    }
+
+    /// <summary>
+    /// When the final flush at shutdown cannot run (its token is already cancelled), the hits that are lost are logged
+    /// as a warning with their count.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task StopAsync_Warns_About_Hits_Lost_When_Final_Flush_Is_Cancelled()
+    {
+        var flushLogger = new CapturingLogger<TrackingFlushService>();
+        this.state.SetAvailable();
+        var flushService = this.CreateService(flushLogger: flushLogger);
+        await flushService.StartAsync(CancellationToken.None);
+        this.queue.TryEnqueue(Hit("/a"));
+        this.queue.TryEnqueue(Hit("/b"));
+
+        await flushService.StopAsync(new CancellationToken(true));
+        flushService.Dispose();
+
+        Assert.That(this.upsert.Calls, Is.Empty);
+        Assert.That(flushLogger.Warnings, Has.Count.EqualTo(1));
+        Assert.That(flushLogger.Warnings[0], Does.Contain("2"));
+    }
+
+    /// <summary>
+    /// A final flush that writes everything logs no loss.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task StopAsync_Logs_No_Loss_When_Final_Flush_Writes_Everything()
+    {
+        var flushLogger = new CapturingLogger<TrackingFlushService>();
+        this.state.SetAvailable();
+        var flushService = this.CreateService(flushLogger: flushLogger);
+        await flushService.StartAsync(CancellationToken.None);
+        this.queue.TryEnqueue(Hit("/a"));
+
+        await flushService.StopAsync(CancellationToken.None);
+        flushService.Dispose();
+
+        Assert.That(this.upsert.Calls, Has.Count.EqualTo(1));
+        Assert.That(flushLogger.Warnings, Is.Empty);
+    }
+
+    private static TrackedUrlHit Hit(string url) =>
+        new(url, "hash" + url, url, url, string.Empty, string.Empty, false, 1, T0, T0);
+
+    private TrackingFlushService CreateService(
+        PageNotFoundTrackerSettings? settings = null,
+        bool useDefaultUpsert = false,
+        CapturingLogger<TrackingFlushService>? flushLogger = null,
+        CapturingLogger<DefaultTrackedUrlUpsert>? upsertLogger = null)
+    {
+        var connectionStrings = new Mock<IOptionsMonitor<ConnectionStrings>>();
+        connectionStrings.Setup(m => m.CurrentValue).Returns(new ConnectionStrings { ProviderName = ProviderName });
+        var serviceProvider = new ServiceCollection()
+            .AddSingleton(this.factory.Object)
+            .BuildServiceProvider();
+
+        return new TrackingFlushService(
+            this.queue,
+            this.state,
+            new TrackingDatabaseProviderSelector([new FakeProvider(ProviderName, useDefaultUpsert ? null : this.upsert)]),
+            connectionStrings.Object,
+            serviceProvider,
+            new DefaultTrackedUrlUpsert(upsertLogger ?? (ILogger<DefaultTrackedUrlUpsert>)NullLogger<DefaultTrackedUrlUpsert>.Instance),
+            Options.Create(settings ?? new PageNotFoundTrackerSettings()),
+            this.time,
+            flushLogger ?? (ILogger<TrackingFlushService>)NullLogger<TrackingFlushService>.Instance);
+    }
+
+    private sealed class FakeProvider(string providerName, ITrackedUrlUpsert? upsert) : ITrackingDatabaseProvider
+    {
+        public string ProviderName { get; } = providerName;
+
+        public ITrackedUrlUpsert? Upsert { get; } = upsert;
+
+        public void ConfigureDbContext(DbContextOptionsBuilder options, string connectionString)
+        {
+        }
+    }
+
+    private sealed class RecordingUpsert : ITrackedUrlUpsert
+    {
+        private readonly object gate = new();
+        private readonly List<TrackedUrlHit[]> calls = [];
+
+        public bool FailNext { get; set; }
+
+        public bool CancelNext { get; set; }
+
+        public (string Url, CancellationTokenSource Source)? CancelAndReturnUrlNext { get; set; }
+
+        public IReadOnlyList<TrackedUrlHit[]> Calls
+        {
+            get
+            {
+                lock (this.gate)
+                {
+                    return [.. this.calls];
+                }
+            }
+        }
+
+        public string? FailUrlNext { get; set; }
+
+        public Task<IReadOnlyCollection<TrackedUrlHit>> UpsertAsync(DbContext dbContext, IReadOnlyCollection<TrackedUrlHit> hits, CancellationToken cancellationToken)
+        {
+            lock (this.gate)
+            {
+                this.calls.Add([.. hits]);
+            }
+
+            if (this.FailNext)
+            {
+                this.FailNext = false;
+                throw new InvalidOperationException("Database down.");
+            }
+
+            if (this.CancelAndReturnUrlNext is { } cancel)
+            {
+                this.CancelAndReturnUrlNext = null;
+                cancel.Source.Cancel();
+                return Task.FromResult<IReadOnlyCollection<TrackedUrlHit>>([.. hits.Where(h => h.Url == cancel.Url)]);
+            }
+
+            if (this.CancelNext)
+            {
+                this.CancelNext = false;
+                throw new OperationCanceledException();
+            }
+
+            if (this.FailUrlNext is { } failUrl)
+            {
+                this.FailUrlNext = null;
+                return Task.FromResult<IReadOnlyCollection<TrackedUrlHit>>([.. hits.Where(h => h.Url == failUrl)]);
+            }
+
+            return Task.FromResult<IReadOnlyCollection<TrackedUrlHit>>([]);
+        }
+
+        public async Task WaitForCallsAsync(int count, TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (this.Calls.Count < count)
+            {
+                if (DateTime.UtcNow > deadline)
+                {
+                    Assert.Fail($"Expected {count} upsert calls, got {this.Calls.Count}.");
+                }
+
+                await Task.Delay(10);
+            }
+        }
+    }
+}

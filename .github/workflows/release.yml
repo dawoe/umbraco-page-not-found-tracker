@@ -18,6 +18,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+
+    # SQL Server for the tracking integration tests (PNFT_SQLSERVER_CONNECTION). Test-only values, never real.
+    # Service env and options cannot read the workflow env context, so the password is a literal here.
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: 'PnftTest-only1!'
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'PnftTest-only1!' -Q 'SELECT 1' -b -o /dev/null"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-start-period 20s
+          --health-retries 12
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,9 +63,16 @@ jobs:
         run: dotnet build -c ${{ env.BUILD_CONFIG }} --no-restore
         working-directory: src/
 
+      # Fails when the SQLite and SQL Server migration sets do not cover the model (restores dotnet-ef itself).
+      - name: Check pending model changes
+        run: ./scripts/check-pending-model-changes.ps1
+
       - name: Test
         run: dotnet test -c ${{ env.BUILD_CONFIG }} --no-restore --no-build /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura
         working-directory: src/
+        env:
+          PNFT_SQLSERVER_CONNECTION: 'Server=localhost,1433;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True'
+          PNFT_REQUIRE_SQLSERVER: 'true'
 
       # No --no-build: pack at solution level fails with NETSDK1085 (a referenced project invokes Build).
       # The earlier Release build makes this an incremental no-op rebuild; the client build still runs first.

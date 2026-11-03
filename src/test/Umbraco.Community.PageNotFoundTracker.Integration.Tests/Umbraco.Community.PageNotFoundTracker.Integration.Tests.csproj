@@ -23,6 +23,9 @@
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.BackOffice/Umbraco.Community.PageNotFoundTracker.BackOffice.csproj" />
     <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker/Umbraco.Community.PageNotFoundTracker.csproj" />
+    <!-- The entry project references the providers with PrivateAssets=all, so they do not flow here by themselves. -->
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.csproj" />
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer/Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.csproj" />
   </ItemGroup>
 
 </Project>

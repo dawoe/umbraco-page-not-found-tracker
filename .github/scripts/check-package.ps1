@@ -21,6 +21,8 @@ $expected = @(
     'lib/net10.0/Umbraco.Community.PageNotFoundTracker.Core.dll',
     'lib/net10.0/Umbraco.Community.PageNotFoundTracker.Infrastructure.dll',
     'lib/net10.0/Umbraco.Community.PageNotFoundTracker.BackOffice.dll',
+    'lib/net10.0/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.dll',
+    'lib/net10.0/Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.dll',
     'staticwebassets/App_Plugins/PageNotFoundTracker/entry-point.js'
 )
 

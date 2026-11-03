@@ -172,6 +172,10 @@ register it, and what is guaranteed and what is not.
   add an entity action to each.
 - `README.md`: a table listing every extension point, what it replaces, the audience and
   the page.
+- Every extension page states the registration rule (decided with the user on 2026-11-03): register
+  from a composer marked `[ComposeAfter(typeof(PageNotFoundTrackerComposer))]`, because every
+  package composer runs before that anchor and replaceable services use `AddUnique` (last
+  registration wins; a registration made before the package is overwritten).
 
 ### `troubleshooting.md`
 

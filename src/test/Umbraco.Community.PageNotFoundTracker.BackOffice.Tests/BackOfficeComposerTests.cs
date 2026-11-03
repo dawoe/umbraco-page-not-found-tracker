@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Umbraco.Cms.Core.Composing;
 using Umbraco.Cms.Core.DependencyInjection;
+using Umbraco.Community.PageNotFoundTracker.Core;
 
 namespace Umbraco.Community.PageNotFoundTracker.BackOffice.Tests;
 
@@ -28,5 +29,18 @@ internal sealed class BackOfficeComposerTests
         new BackOfficeComposer().Compose(builder);
 
         Assert.DoesNotThrow(() => serviceCollection.BuildServiceProvider().Dispose());
+    }
+
+    /// <summary>
+    /// Tests that the composer runs before <see cref="PageNotFoundTrackerComposer"/>, so consumers can replace its registrations.
+    /// </summary>
+    [Test]
+    public void Composer_Runs_Before_The_Package_Anchor_Composer()
+    {
+        var composeBefore = typeof(BackOfficeComposer).GetCustomAttributes(typeof(ComposeBeforeAttribute), inherit: false)
+            .Cast<ComposeBeforeAttribute>()
+            .Select(attribute => attribute.RequiringType);
+
+        Assert.That(composeBefore, Does.Contain(typeof(PageNotFoundTrackerComposer)));
     }
 }
