@@ -70,6 +70,7 @@ jobs:
         working-directory: src/
         env:
           PNFT_SQLSERVER_CONNECTION: 'Server=localhost,1433;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True'
+          PNFT_REQUIRE_SQLSERVER: 'true'
 
       # Every PR proves the package can be packed and is complete.
       # No --no-build: pack at solution level fails with NETSDK1085 (a referenced project invokes Build).

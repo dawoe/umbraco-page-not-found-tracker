@@ -522,7 +522,9 @@ ignored with a message. The value is a **server-level** connection string (no `D
 drops a `pnft_test_<guid>` database. Docker (see SQL Server profile setup):
 `Server=localhost,14330;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`. LocalDB:
 `Server=(localdb)\<instance>;Integrated Security=True;TrustServerCertificate=True` (a named instance, not
-`MSSQLLocalDB`). CI uses a `mssql` service container on port 1433. Umbraco itself boots only on SQLite in the tests
+`MSSQLLocalDB`). CI uses a `mssql` service container on port 1433 and also sets `PNFT_REQUIRE_SQLSERVER=true`:
+with that switch a missing `PNFT_SQLSERVER_CONNECTION` fails the SQL Server cases instead of ignoring them, so a broken
+CI configuration cannot pass with SQL Server coverage silently skipped. Leave it unset locally. Umbraco itself boots only on SQLite in the tests
 (`TrackingEndToEndTests`: a 404 request plus a forced flush gives a row); the full site on SQL Server is the
 `sql-server` profile.
 
@@ -550,7 +552,7 @@ commit that (restore with `git checkout`, see Committed databases). Committed da
 - All three workflows run a `mssql` service container (`mcr.microsoft.com/mssql/server:2022-latest`, port 1433,
   health check `/opt/mssql-tools18/bin/sqlcmd -C ... -Q "SELECT 1"`), run `scripts/check-pending-model-changes.ps1`
   after the build and set `PNFT_SQLSERVER_CONNECTION=Server=localhost,1433;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`
-  on the test step (test-only values, literal because service settings cannot read the `env` context). Keep the three
+  and `PNFT_REQUIRE_SQLSERVER=true` on the test step (test-only values, literal because service settings cannot read the `env` context). Keep the three
   in step. The service container is unverified until the first CI run.
 - `pr-validation.yml` (PRs to `develop`): client build, restore, build, test with coverage, pack and
   `check-package.ps1`, then E2E against `single-site` (dev cert without trust, `curl -k` wait loop).

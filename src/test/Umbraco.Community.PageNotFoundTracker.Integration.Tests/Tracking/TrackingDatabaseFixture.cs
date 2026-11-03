@@ -64,6 +64,13 @@ internal abstract class TrackingDatabaseFixture
             this.serverConnectionString = SqlServerTestDatabase.GetServerConnectionString();
             if (this.serverConnectionString is null)
             {
+                if (SqlServerTestDatabase.IsRequired())
+                {
+                    Assert.Fail(
+                        $"{SqlServerTestDatabase.RequireVariable} is true but {SqlServerTestDatabase.ConnectionVariable} is not set: " +
+                        "the SQL Server tracking tests would be skipped. Check the SQL Server service and the test step's environment.");
+                }
+
                 Assert.Ignore("Set PNFT_SQLSERVER_CONNECTION to run the SQL Server tracking tests (see CLAUDE.md).");
             }
         }

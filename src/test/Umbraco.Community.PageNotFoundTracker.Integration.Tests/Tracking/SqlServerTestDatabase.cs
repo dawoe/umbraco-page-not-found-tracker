@@ -16,6 +16,12 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
     public const string ConnectionVariable = "PNFT_SQLSERVER_CONNECTION";
 
     /// <summary>
+    /// The environment variable that, when <c>true</c> (CI), makes a missing <see cref="ConnectionVariable"/> a failure
+    /// instead of a skip.
+    /// </summary>
+    public const string RequireVariable = "PNFT_REQUIRE_SQLSERVER";
+
+    /// <summary>
     /// The prefix of every database this class creates; it only ever drops databases with this prefix.
     /// </summary>
     private const string NamePrefix = "pnft_test_";
@@ -48,6 +54,13 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         string? value = Environment.GetEnvironmentVariable(ConnectionVariable);
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }
+
+    /// <summary>
+    /// Gets a value indicating whether the SQL Server tests are required (<see cref="RequireVariable"/> is <c>true</c>).
+    /// </summary>
+    /// <returns><c>true</c> when a missing connection must fail the tests.</returns>
+    public static bool IsRequired() =>
+        bool.TryParse(Environment.GetEnvironmentVariable(RequireVariable), out bool required) && required;
 
     /// <summary>
     /// Creates a new empty database.
