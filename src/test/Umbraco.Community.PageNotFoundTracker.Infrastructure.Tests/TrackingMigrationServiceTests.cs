@@ -90,6 +90,24 @@ internal sealed class TrackingMigrationServiceTests
     }
 
     /// <summary>
+    /// With tracking disabled an unknown provider is only a warning (nothing is lost), and tracking stays unavailable.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Unknown_Provider_With_Tracking_Disabled_Logs_Warning()
+    {
+        this.service = this.CreateService("Some.Unknown", settings: new PageNotFoundTrackerSettings { TrackingEnabled = false });
+
+        await this.service.StartAsync(CancellationToken.None);
+
+        Assert.That(await this.state.WaitUntilReadyAsync(CancellationToken.None).WaitAsync(WaitTimeout), Is.False);
+        Assert.That(this.state.Status, Is.EqualTo(TrackingPersistenceStatus.Unavailable));
+        Assert.That(this.logger.Errors, Is.Empty);
+        Assert.That(this.logger.Warnings, Has.Count.EqualTo(1));
+        Assert.That(this.logger.Warnings[0], Does.Contain("Some.Unknown"));
+    }
+
+    /// <summary>
     /// Nothing happens while Umbraco installs; once it runs the migration runs once and the state becomes available.
     /// </summary>
     /// <returns>A task.</returns>
@@ -210,7 +228,8 @@ internal sealed class TrackingMigrationServiceTests
         string providerName,
         IServiceProvider? serviceProvider = null,
         Func<PageNotFoundTrackerDbContext, CancellationToken, Task>? migrate = null,
-        bool providerNameFails = false)
+        bool providerNameFails = false,
+        PageNotFoundTrackerSettings? settings = null)
     {
         var connectionStrings = new Mock<IOptionsMonitor<ConnectionStrings>>();
         connectionStrings.Setup(m => m.CurrentValue).Returns(new ConnectionStrings { ProviderName = providerName });
@@ -228,6 +247,7 @@ internal sealed class TrackingMigrationServiceTests
             new TrackingDatabaseProviderSelector([new FakeProvider(ProviderName)]),
             connectionStrings.Object,
             serviceProvider,
+            Options.Create(settings ?? new PageNotFoundTrackerSettings()),
             this.time,
             this.logger);
         result.MigrateAsync = migrate ?? ((_, _) =>

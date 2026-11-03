@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.Configuration.Models;
 using Umbraco.Cms.Core.Services;
+using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
@@ -25,6 +26,7 @@ internal sealed class TrackingMigrationService : BackgroundService
     private readonly TrackingDatabaseProviderSelector providerSelector;
     private readonly IOptionsMonitor<ConnectionStrings> connectionStrings;
     private readonly IServiceProvider serviceProvider;
+    private readonly PageNotFoundTrackerSettings settings;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<TrackingMigrationService> logger;
 
@@ -37,6 +39,7 @@ internal sealed class TrackingMigrationService : BackgroundService
     /// <param name="providerSelector">The database provider selector.</param>
     /// <param name="connectionStrings">Umbraco's connection string options.</param>
     /// <param name="serviceProvider">The service provider; the context factory is resolved from it after a provider matched.</param>
+    /// <param name="settings">The settings.</param>
     /// <param name="timeProvider">The time provider.</param>
     /// <param name="logger">The logger.</param>
     public TrackingMigrationService(
@@ -46,6 +49,7 @@ internal sealed class TrackingMigrationService : BackgroundService
         TrackingDatabaseProviderSelector providerSelector,
         IOptionsMonitor<ConnectionStrings> connectionStrings,
         IServiceProvider serviceProvider,
+        IOptions<PageNotFoundTrackerSettings> settings,
         TimeProvider timeProvider,
         ILogger<TrackingMigrationService> logger)
     {
@@ -55,6 +59,7 @@ internal sealed class TrackingMigrationService : BackgroundService
         this.providerSelector = providerSelector;
         this.connectionStrings = connectionStrings;
         this.serviceProvider = serviceProvider;
+        this.settings = settings.Value;
         this.timeProvider = timeProvider;
         this.logger = logger;
     }
@@ -97,7 +102,9 @@ internal sealed class TrackingMigrationService : BackgroundService
             string? providerName = this.connectionStrings.CurrentValue.ProviderName;
             if (this.providerSelector.Select(providerName) is null)
             {
-                this.logger.LogError(
+                // With tracking switched off nothing is lost, so it is only a warning (later features still need it).
+                this.logger.Log(
+                    this.settings.TrackingEnabled ? LogLevel.Error : LogLevel.Warning,
                     "Page Not Found Tracker: no database provider is registered for '{ProviderName}'. Tracking is disabled.",
                     providerName);
                 this.SetUnavailable();
