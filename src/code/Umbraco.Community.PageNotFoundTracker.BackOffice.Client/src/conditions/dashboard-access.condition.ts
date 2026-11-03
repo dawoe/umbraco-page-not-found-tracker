@@ -10,11 +10,11 @@ import type { PNFT_DASHBOARD_ACCESS_CONDITION_ALIAS } from './constants.js';
 export type PnftDashboardAccessConditionConfig = UmbConditionConfigBase<typeof PNFT_DASHBOARD_ACCESS_CONDITION_ALIAS>;
 
 /**
- * Asks the server whether the current user may see the dashboard (`GET access`), once per backoffice session
- * (page load): the first condition instance starts the request, every instance shares the answer. Nothing is
+ * Asks the server whether the current user may see the dashboard (`GET access`): the first condition instance
+ * starts the request, concurrent instances share it, and a successful answer is kept for the page load. Nothing is
  * requested at boot, only when a manifest with this condition is evaluated. A failed request (error status,
- * network failure, missing body) means not permitted (fail closed). This only hides the dashboard: the list
- * endpoints enforce the same group rule with 403.
+ * network failure, missing body) means not permitted (fail closed) and is not kept, so the next evaluation of the
+ * condition asks again. This only hides the dashboard: the list endpoints enforce the same group rule with 403.
  */
 const checkAccess = createDashboardAccessCheck(async () => {
   await whenClientConfigured;
