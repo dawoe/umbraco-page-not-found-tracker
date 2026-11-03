@@ -9,7 +9,7 @@ namespace Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 /// <param name="Take">The page size; clamped to 1 to 100.</param>
 /// <param name="SortColumn">The column to sort on.</param>
 /// <param name="Descending">Whether to sort descending.</param>
-/// <param name="Search">A case-insensitive "contains" term for the normalised URL, or null or empty for none.</param>
+/// <param name="Search">A case-insensitive "contains" term for the normalised URL, or null, empty or whitespace-only for none (a non-blank term is not trimmed).</param>
 /// <param name="Domain">The domain filter.</param>
 /// <param name="Culture">The culture filter.</param>
 public sealed record TrackedUrlQuery(

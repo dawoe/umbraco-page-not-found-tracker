@@ -3,6 +3,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
@@ -35,7 +36,8 @@ internal sealed class TrackedUrlQueryServiceTests : TrackingDatabaseFixture
     public async Task SeedAsync()
     {
         await this.ReplaceRowsAsync(CreateSeedRows());
-        this.service = new TrackedUrlQueryService(new TestContextFactory(this));
+        this.service = new TrackedUrlQueryService(
+            new ServiceCollection().AddSingleton<IDbContextFactory<PageNotFoundTrackerDbContext>>(new TestContextFactory(this)).BuildServiceProvider());
     }
 
     /// <summary>
@@ -117,6 +119,70 @@ internal sealed class TrackedUrlQueryServiceTests : TrackingDatabaseFixture
 
         Assert.That(page.Items.Select(r => r.Url), Is.EqualTo(new[] { expectedUrl }));
         Assert.That(page.Total, Is.EqualTo(1));
+    }
+
+    /// <summary>
+    /// Tests that a whitespace-only search is no search, and that a non-blank term is not trimmed.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task GetPageAsync_WhitespaceSearch_IsNoSearch_ButNonBlankIsNotTrimmed()
+    {
+        TrackedUrlPage blank = await this.service.GetPageAsync(Query(search: "   "), CancellationToken.None);
+        TrackedUrlPage leadingSpace = await this.service.GetPageAsync(Query(search: " about"), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(blank.Total, Is.EqualTo(25));
+            Assert.That(leadingSpace.Total, Is.EqualTo(0));
+        });
+    }
+
+    /// <summary>
+    /// Tests that a backslash is literal and that a percent escape is decoded once, never twice.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task GetPageAsync_SearchBackslashAndDoubleEncodedPercent_AreLiteral()
+    {
+        await this.ReplaceRowsAsync([Row("/a\\b"), Row("/a%41"), Row("/aa"), Row("/axb")]);
+
+        TrackedUrlPage backslash = await this.service.GetPageAsync(Query(search: "\\"), CancellationToken.None);
+        TrackedUrlPage encoded = await this.service.GetPageAsync(Query(search: "%2541"), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(backslash.Items.Select(r => r.Url), Is.EqualTo(new[] { "/a\\b" }));
+            Assert.That(encoded.Items.Select(r => r.Url), Is.EqualTo(new[] { "/a%41" }));
+        });
+    }
+
+    /// <summary>
+    /// Tests that an upper-case term matches the lower-cased stored URLs.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task GetPageAsync_UpperCaseSearch_MatchesLowerCasedRows()
+    {
+        TrackedUrlPage page = await this.service.GetPageAsync(Query(search: "PAGE-"), CancellationToken.None);
+
+        Assert.That(page.Total, Is.EqualTo(20));
+    }
+
+    /// <summary>
+    /// Tests that a 3,000-character search returns an empty page without throwing.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task GetPageAsync_ThreeThousandCharacterSearch_ReturnsEmptyPage()
+    {
+        TrackedUrlPage page = await this.service.GetPageAsync(Query(search: new string('a', 3000)), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(page.Items, Is.Empty);
+            Assert.That(page.Total, Is.EqualTo(0));
+        });
     }
 
     /// <summary>
