@@ -160,6 +160,46 @@ internal sealed class TrackingQueueTests
         Assert.That(next.Single().Count, Is.EqualTo(2));
     }
 
+    /// <summary>
+    /// Clearing discards the channel, the pending buffer and an uncompleted batch.
+    /// </summary>
+    [Test]
+    public void Clear_Discards_Everything()
+    {
+        var queue = CreateQueue(out _, out _);
+        queue.TryEnqueue(Hit("/a", "a", T0));
+        queue.TryEnqueue(Hit("/b", "b", T0));
+        queue.CompleteBatch([.. queue.TakeBatch().Where(h => h.Url == "/a")]);
+        queue.TryEnqueue(Hit("/c", "c", T0));
+        queue.TakeBatch();
+        queue.TryEnqueue(Hit("/d", "d", T0));
+        Assert.That(queue.Count, Is.EqualTo(3));
+
+        queue.Clear();
+
+        Assert.That(queue.Count, Is.Zero);
+        Assert.That(queue.TakeBatch(), Is.Empty);
+    }
+
+    /// <summary>
+    /// Drops from many threads at once are all counted: the warnings together report every dropped hit.
+    /// </summary>
+    [Test]
+    public void TryEnqueue_Concurrent_Drops_Are_All_Counted()
+    {
+        var queue = CreateQueue(out var time, out var logger, capacity: 1);
+        queue.TryEnqueue(Hit("/0", "0", T0));
+
+        Parallel.For(0, 1000, i => queue.TryEnqueue(Hit("/" + i, "x", T0)));
+        time.Advance(TimeSpan.FromMinutes(1));
+        queue.TryEnqueue(Hit("/last", "x", T0));
+
+        long reported = logger.Warnings
+            .Select(w => System.Text.RegularExpressions.Regex.Match(w, @"dropped (\d+) hits").Groups[1].Value)
+            .Sum(long.Parse);
+        Assert.That(reported, Is.EqualTo(1001));
+    }
+
     private static TrackedUrlHit Hit(string url, string display, DateTime seen, string domain = "", string culture = "") =>
         new(url, "hash" + url, url, display, domain, culture, false, 1, seen, seen);
 

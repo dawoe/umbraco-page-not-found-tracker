@@ -21,6 +21,7 @@ internal sealed class TrackingMigrationService : BackgroundService
 
     private readonly IRuntimeState runtimeState;
     private readonly TrackingPersistenceState persistenceState;
+    private readonly TrackingQueue queue;
     private readonly TrackingDatabaseProviderSelector providerSelector;
     private readonly IOptionsMonitor<ConnectionStrings> connectionStrings;
     private readonly IServiceProvider serviceProvider;
@@ -32,6 +33,7 @@ internal sealed class TrackingMigrationService : BackgroundService
     /// </summary>
     /// <param name="runtimeState">Umbraco's runtime state.</param>
     /// <param name="persistenceState">The persistence state (the gate).</param>
+    /// <param name="queue">The queue of hits; cleared when the persistence becomes unavailable.</param>
     /// <param name="providerSelector">The database provider selector.</param>
     /// <param name="connectionStrings">Umbraco's connection string options.</param>
     /// <param name="serviceProvider">The service provider; the context factory is resolved from it after a provider matched.</param>
@@ -40,6 +42,7 @@ internal sealed class TrackingMigrationService : BackgroundService
     public TrackingMigrationService(
         IRuntimeState runtimeState,
         TrackingPersistenceState persistenceState,
+        TrackingQueue queue,
         TrackingDatabaseProviderSelector providerSelector,
         IOptionsMonitor<ConnectionStrings> connectionStrings,
         IServiceProvider serviceProvider,
@@ -48,6 +51,7 @@ internal sealed class TrackingMigrationService : BackgroundService
     {
         this.runtimeState = runtimeState;
         this.persistenceState = persistenceState;
+        this.queue = queue;
         this.providerSelector = providerSelector;
         this.connectionStrings = connectionStrings;
         this.serviceProvider = serviceProvider;
@@ -96,7 +100,7 @@ internal sealed class TrackingMigrationService : BackgroundService
                 this.logger.LogError(
                     "Page Not Found Tracker: no database provider is registered for '{ProviderName}'. Tracking is disabled.",
                     providerName);
-                this.persistenceState.SetUnavailable();
+                this.SetUnavailable();
                 return;
             }
 
@@ -113,7 +117,15 @@ internal sealed class TrackingMigrationService : BackgroundService
         catch (Exception ex)
         {
             this.logger.LogError(ex, "Page Not Found Tracker: migrating the tracking tables failed. Tracking is disabled.");
-            this.persistenceState.SetUnavailable();
+            this.SetUnavailable();
         }
+    }
+
+    // Hits queued while the state was pending can never be written: discard them instead of keeping them for the
+    // life of the process.
+    private void SetUnavailable()
+    {
+        this.persistenceState.SetUnavailable();
+        this.queue.Clear();
     }
 }

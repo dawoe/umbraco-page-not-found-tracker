@@ -11,10 +11,12 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 /// <summary>
 /// The in-memory buffer of hits: a bounded channel the requests write to, and a pending buffer that merges hits per
 /// identity and keeps a failed batch for the next attempt. The pending buffer, the in-flight batch and the drain are
-/// guarded by one lock.
+/// guarded by one lock; dropping a hit on a full channel never takes it.
 /// </summary>
 internal sealed class TrackingQueue
 {
+    private const long NeverWarned = long.MinValue;
+
     private static readonly TimeSpan WarningInterval = TimeSpan.FromMinutes(1);
 
     private readonly object gate = new();
@@ -25,8 +27,7 @@ internal sealed class TrackingQueue
     private readonly Dictionary<(string UrlHash, string Domain, string Culture), TrackedUrlHit> pending = new(new IdentityComparer());
     private TrackedUrlHit[] inFlight = [];
     private long droppedSinceWarning;
-    private long lastWarningTimestamp;
-    private bool warned;
+    private long lastWarningTimestamp = NeverWarned;
 
     // With DropWrite a full channel still reports success from TryWrite, so the drop callback (which runs
     // synchronously on the writing thread) tells TryEnqueue what happened.
@@ -165,6 +166,23 @@ internal sealed class TrackingQueue
         }
     }
 
+    /// <summary>
+    /// Discards everything queued: the channel, the pending buffer and an uncompleted in-flight batch. Used when the
+    /// persistence becomes unavailable, so hits that can never be written do not stay in memory.
+    /// </summary>
+    public void Clear()
+    {
+        lock (this.gate)
+        {
+            while (this.channel.Reader.TryRead(out _))
+            {
+            }
+
+            this.pending.Clear();
+            this.inFlight = [];
+        }
+    }
+
     private void Merge(TrackedUrlHit hit)
     {
         var key = (hit.UrlHash, hit.Domain, hit.Culture);
@@ -183,25 +201,29 @@ internal sealed class TrackingQueue
         };
     }
 
+    // Lock free, because it runs on the request thread: the counter is interlocked, and a compare-and-swap on the
+    // last warning time lets exactly one thread write each warning.
     private void RegisterDrop()
     {
-        lock (this.gate)
+        Interlocked.Increment(ref this.droppedSinceWarning);
+        long now = this.timeProvider.GetTimestamp();
+        long last = Interlocked.Read(ref this.lastWarningTimestamp);
+        if (last != NeverWarned && this.timeProvider.GetElapsedTime(last, now) < WarningInterval)
         {
-            this.droppedSinceWarning++;
-            long now = this.timeProvider.GetTimestamp();
-            if (this.warned && this.timeProvider.GetElapsedTime(this.lastWarningTimestamp, now) < WarningInterval)
-            {
-                return;
-            }
-
-            this.logger.LogWarning(
-                "The 404 tracking queue is full (capacity {Capacity}); dropped {Dropped} hits since the last warning.",
-                this.capacity,
-                this.droppedSinceWarning);
-            this.droppedSinceWarning = 0;
-            this.lastWarningTimestamp = now;
-            this.warned = true;
+            return;
         }
+
+        if (Interlocked.CompareExchange(ref this.lastWarningTimestamp, now, last) != last)
+        {
+            // Another thread is writing this warning.
+            return;
+        }
+
+        long dropped = Interlocked.Exchange(ref this.droppedSinceWarning, 0);
+        this.logger.LogWarning(
+            "The 404 tracking queue is full (capacity {Capacity}); dropped {Dropped} hits since the last warning.",
+            this.capacity,
+            dropped);
     }
 
     private sealed class IdentityComparer : IEqualityComparer<(string UrlHash, string Domain, string Culture)>

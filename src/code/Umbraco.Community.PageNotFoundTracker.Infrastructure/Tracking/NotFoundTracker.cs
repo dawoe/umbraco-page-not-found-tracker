@@ -54,6 +54,12 @@ internal sealed class NotFoundTracker : INotFoundRecorder
             }
 
             this.queue.TryEnqueue(TrackedUrlNormalizer.Normalize(occurrence, current.IncludeQueryString, this.timeProvider.GetUtcNow().UtcDateTime));
+
+            // The state can turn unavailable (and the queue be cleared) between the check above and the enqueue.
+            if (this.persistenceState.Status == TrackingPersistenceStatus.Unavailable)
+            {
+                this.queue.Clear();
+            }
         }
         catch (Exception ex)
         {

@@ -10,6 +10,7 @@ using Moq;
 using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.Configuration.Models;
 using Umbraco.Cms.Core.Services;
+using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests.TestSupport;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
@@ -28,6 +29,7 @@ internal sealed class TrackingMigrationServiceTests
 
     private TimerAwareTimeProvider time = null!;
     private TrackingPersistenceState state = null!;
+    private TrackingQueue queue = null!;
     private Mock<IRuntimeState> runtimeState = null!;
     private Mock<IDbContextFactory<PageNotFoundTrackerDbContext>> factory = null!;
     private CapturingLogger<TrackingMigrationService> logger = null!;
@@ -42,6 +44,7 @@ internal sealed class TrackingMigrationServiceTests
     {
         this.time = new TimerAwareTimeProvider(DateTimeOffset.UtcNow);
         this.state = new TrackingPersistenceState();
+        this.queue = new TrackingQueue(Options.Create(new PageNotFoundTrackerSettings()), this.time, NullLogger<TrackingQueue>.Instance);
         this.runtimeState = new Mock<IRuntimeState>();
         this.runtimeState.Setup(r => r.Level).Returns(RuntimeLevel.Run);
         this.factory = new Mock<IDbContextFactory<PageNotFoundTrackerDbContext>>();
@@ -162,6 +165,47 @@ internal sealed class TrackingMigrationServiceTests
         Assert.That(this.migrateCalls, Is.EqualTo(0));
     }
 
+    /// <summary>
+    /// Hits queued while the state was pending are discarded when the state becomes unavailable, so they do not stay
+    /// in memory for the life of the process.
+    /// </summary>
+    /// <param name="unknownProvider">Whether the provider is unknown (otherwise the migration fails).</param>
+    /// <returns>A task.</returns>
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Unavailable_Clears_The_Queue(bool unknownProvider)
+    {
+        this.queue.TryEnqueue(new TrackedUrlHit("/a", "hash/a", "/a", "/a", string.Empty, string.Empty, false, 1, DateTime.UtcNow, DateTime.UtcNow));
+        this.queue.TryEnqueue(new TrackedUrlHit("/b", "hash/b", "/b", "/b", string.Empty, string.Empty, false, 1, DateTime.UtcNow, DateTime.UtcNow));
+        this.queue.CompleteBatch([.. this.queue.TakeBatch().Where(h => h.Url == "/a")]);
+        this.queue.TryEnqueue(new TrackedUrlHit("/c", "hash/c", "/c", "/c", string.Empty, string.Empty, false, 1, DateTime.UtcNow, DateTime.UtcNow));
+        Assert.That(this.queue.Count, Is.EqualTo(2));
+        this.service = unknownProvider
+            ? this.CreateService("Some.Unknown")
+            : this.CreateService(ProviderName, migrate: (_, _) => throw new InvalidOperationException("boom"));
+
+        await this.service.StartAsync(CancellationToken.None);
+
+        Assert.That(await this.state.WaitUntilReadyAsync(CancellationToken.None).WaitAsync(WaitTimeout), Is.False);
+        Assert.That(this.queue.Count, Is.Zero);
+    }
+
+    /// <summary>
+    /// A successful migration keeps the queued hits for the first flush.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Available_Keeps_The_Queue()
+    {
+        this.queue.TryEnqueue(new TrackedUrlHit("/a", "hash/a", "/a", "/a", string.Empty, string.Empty, false, 1, DateTime.UtcNow, DateTime.UtcNow));
+        this.service = this.CreateService(ProviderName);
+
+        await this.service.StartAsync(CancellationToken.None);
+
+        Assert.That(await this.state.WaitUntilReadyAsync(CancellationToken.None).WaitAsync(WaitTimeout), Is.True);
+        Assert.That(this.queue.Count, Is.EqualTo(1));
+    }
+
     private TrackingMigrationService CreateService(
         string providerName,
         IServiceProvider? serviceProvider = null,
@@ -180,6 +224,7 @@ internal sealed class TrackingMigrationServiceTests
         var result = new TrackingMigrationService(
             this.runtimeState.Object,
             this.state,
+            this.queue,
             new TrackingDatabaseProviderSelector([new FakeProvider(ProviderName)]),
             connectionStrings.Object,
             serviceProvider,

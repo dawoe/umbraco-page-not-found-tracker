@@ -2,6 +2,7 @@
 
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using Moq;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
@@ -72,6 +73,27 @@ internal sealed class NotFoundTrackerTests
         Task? task = null;
         Assert.DoesNotThrow(() => task = tracker.RecordAsync(Occurrence(path), CancellationToken.None));
         Assert.That(task!.IsCompleted, Is.True);
+    }
+
+    /// <summary>
+    /// When the state turns unavailable between the check and the enqueue, the hit does not stay queued.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task RecordAsync_State_Turning_Unavailable_During_Enqueue_Leaves_Nothing_Queued()
+    {
+        var options = Options.Create(new PageNotFoundTrackerSettings());
+        var time = new FakeTimeProvider();
+        var queue = new TrackingQueue(options, time, new CapturingLogger<TrackingQueue>());
+        var state = new Mock<ITrackingPersistenceState>();
+        state.SetupSequence(s => s.Status)
+            .Returns(TrackingPersistenceStatus.Pending)
+            .Returns(TrackingPersistenceStatus.Unavailable);
+        var tracker = new NotFoundTracker(queue, state.Object, options, time, new CapturingLogger<NotFoundTracker>());
+
+        await tracker.RecordAsync(Occurrence("/missing"), CancellationToken.None);
+
+        Assert.That(queue.Count, Is.Zero);
     }
 
     private static NotFoundOccurrence Occurrence(string path) => new(path, null, null, false, true);
