@@ -88,18 +88,18 @@ internal sealed class TrackingMigrationService : BackgroundService
 
     private async Task MigrateOnceAsync(CancellationToken cancellationToken)
     {
-        string? providerName = this.connectionStrings.CurrentValue.ProviderName;
-        if (this.providerSelector.Select(providerName) is null)
-        {
-            this.logger.LogError(
-                "Page Not Found Tracker: no database provider is registered for '{ProviderName}'. Tracking is disabled.",
-                providerName);
-            this.persistenceState.SetUnavailable();
-            return;
-        }
-
         try
         {
+            string? providerName = this.connectionStrings.CurrentValue.ProviderName;
+            if (this.providerSelector.Select(providerName) is null)
+            {
+                this.logger.LogError(
+                    "Page Not Found Tracker: no database provider is registered for '{ProviderName}'. Tracking is disabled.",
+                    providerName);
+                this.persistenceState.SetUnavailable();
+                return;
+            }
+
             IDbContextFactory<PageNotFoundTrackerDbContext> factory =
                 this.serviceProvider.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>();
             await using PageNotFoundTrackerDbContext dbContext = await factory.CreateDbContextAsync(cancellationToken);

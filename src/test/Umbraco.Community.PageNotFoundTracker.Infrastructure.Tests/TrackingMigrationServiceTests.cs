@@ -11,6 +11,7 @@ using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.Configuration.Models;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests.TestSupport;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests;
@@ -29,7 +30,7 @@ internal sealed class TrackingMigrationServiceTests
     private TrackingPersistenceState state = null!;
     private Mock<IRuntimeState> runtimeState = null!;
     private Mock<IDbContextFactory<PageNotFoundTrackerDbContext>> factory = null!;
-    private CapturingLogger logger = null!;
+    private CapturingLogger<TrackingMigrationService> logger = null!;
     private int migrateCalls;
     private TrackingMigrationService? service;
 
@@ -46,7 +47,7 @@ internal sealed class TrackingMigrationServiceTests
         this.factory = new Mock<IDbContextFactory<PageNotFoundTrackerDbContext>>();
         this.factory.Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new PageNotFoundTrackerDbContext(new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>().Options));
-        this.logger = new CapturingLogger();
+        this.logger = new CapturingLogger<TrackingMigrationService>();
         this.migrateCalls = 0;
     }
 
@@ -127,6 +128,23 @@ internal sealed class TrackingMigrationServiceTests
     }
 
     /// <summary>
+    /// A failure while reading the provider name is logged and disables tracking instead of escaping.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Failing_Provider_Name_Read_Sets_Unavailable()
+    {
+        this.service = this.CreateService(ProviderName, providerNameFails: true);
+
+        await this.service.StartAsync(CancellationToken.None);
+
+        Assert.That(await this.state.WaitUntilReadyAsync(CancellationToken.None).WaitAsync(WaitTimeout), Is.False);
+        Assert.That(this.state.Status, Is.EqualTo(TrackingPersistenceStatus.Unavailable));
+        Assert.That(this.logger.Errors, Has.Count.EqualTo(1));
+        Assert.That(this.migrateCalls, Is.EqualTo(0));
+    }
+
+    /// <summary>
     /// Stopping before Umbraco runs leaves the state pending.
     /// </summary>
     /// <returns>A task.</returns>
@@ -147,10 +165,16 @@ internal sealed class TrackingMigrationServiceTests
     private TrackingMigrationService CreateService(
         string providerName,
         IServiceProvider? serviceProvider = null,
-        Func<PageNotFoundTrackerDbContext, CancellationToken, Task>? migrate = null)
+        Func<PageNotFoundTrackerDbContext, CancellationToken, Task>? migrate = null,
+        bool providerNameFails = false)
     {
         var connectionStrings = new Mock<IOptionsMonitor<ConnectionStrings>>();
         connectionStrings.Setup(m => m.CurrentValue).Returns(new ConnectionStrings { ProviderName = providerName });
+        if (providerNameFails)
+        {
+            connectionStrings.Setup(m => m.CurrentValue).Throws(new InvalidOperationException("bad config"));
+        }
+
         serviceProvider ??= new ServiceCollection().AddSingleton(this.factory.Object).BuildServiceProvider();
 
         var result = new TrackingMigrationService(
@@ -177,53 +201,6 @@ internal sealed class TrackingMigrationServiceTests
 
         public void ConfigureDbContext(DbContextOptionsBuilder options, string connectionString)
         {
-        }
-    }
-
-    private sealed class CapturingLogger : ILogger<TrackingMigrationService>
-    {
-        private readonly object gate = new();
-        private readonly List<string> errors = [];
-
-        public IReadOnlyList<string> Errors
-        {
-            get
-            {
-                lock (this.gate)
-                {
-                    return [.. this.errors];
-                }
-            }
-        }
-
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull => NullLogger.Instance.BeginScope(state);
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            if (logLevel == LogLevel.Error)
-            {
-                lock (this.gate)
-                {
-                    this.errors.Add(formatter(state, exception));
-                }
-            }
-        }
-    }
-
-    private sealed class TimerAwareTimeProvider(DateTimeOffset startDateTime) : FakeTimeProvider(startDateTime)
-    {
-        private readonly TaskCompletionSource timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public Task TimerCreated => this.timerCreated.Task;
-
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            ITimer timer = base.CreateTimer(callback, state, dueTime, period);
-            this.timerCreated.TrySetResult();
-            return timer;
         }
     }
 }

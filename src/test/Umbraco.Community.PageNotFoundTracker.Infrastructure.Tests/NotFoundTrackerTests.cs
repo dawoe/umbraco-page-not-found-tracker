@@ -5,6 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests.TestSupport;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests;
@@ -81,7 +82,7 @@ internal sealed class NotFoundTrackerTests
     {
         var options = Options.Create(settings);
         var time = new FakeTimeProvider();
-        var queue = new TrackingQueue(options, time, new TrackingQueueTests.CapturingLogger<TrackingQueue>());
+        var queue = new TrackingQueue(options, time, new CapturingLogger<TrackingQueue>());
         var state = new TrackingPersistenceState();
         if (status == TrackingPersistenceStatus.Available)
         {
@@ -92,7 +93,7 @@ internal sealed class NotFoundTrackerTests
             state.SetUnavailable();
         }
 
-        var tracker = new NotFoundTracker(queue, state, options, time, new TrackingQueueTests.CapturingLogger<NotFoundTracker>());
+        var tracker = new NotFoundTracker(queue, state, options, time, new CapturingLogger<NotFoundTracker>());
         return (tracker, queue);
     }
 }

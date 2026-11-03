@@ -9,6 +9,7 @@ using Moq;
 using Umbraco.Cms.Core.Configuration.Models;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests.TestSupport;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests;
@@ -287,24 +288,6 @@ internal sealed class TrackingFlushServiceTests
 
         public void ConfigureDbContext(DbContextOptionsBuilder options, string connectionString)
         {
-        }
-    }
-
-    /// <summary>
-    /// A fake time provider that signals when a timer is created. <c>BackgroundService</c> runs <c>ExecuteAsync</c>
-    /// on the thread pool (.NET 10), so the test waits for the periodic timer before advancing time.
-    /// </summary>
-    private sealed class TimerAwareTimeProvider(DateTimeOffset startDateTime) : FakeTimeProvider(startDateTime)
-    {
-        private readonly TaskCompletionSource timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public Task TimerCreated => this.timerCreated.Task;
-
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            ITimer timer = base.CreateTimer(callback, state, dueTime, period);
-            this.timerCreated.TrySetResult();
-            return timer;
         }
     }
 
