@@ -16,6 +16,10 @@ public interface ITrackedUrlUpsert
     /// <param name="dbContext">The database context to write with.</param>
     /// <param name="hits">The merged hits, one per identity.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that completes when the hits are written.</returns>
-    Task UpsertAsync(DbContext dbContext, IReadOnlyCollection<TrackedUrlHit> hits, CancellationToken cancellationToken);
+    /// <returns>
+    /// The hits that were not written (empty when all were). The caller keeps them pending for the next flush; the
+    /// written hits are not sent again. An implementation that throws is treated as having written none of the batch,
+    /// so an implementation that writes in batches must be all-or-nothing when it throws.
+    /// </returns>
+    Task<IReadOnlyCollection<TrackedUrlHit>> UpsertAsync(DbContext dbContext, IReadOnlyCollection<TrackedUrlHit> hits, CancellationToken cancellationToken);
 }

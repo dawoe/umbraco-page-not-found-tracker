@@ -205,6 +205,21 @@ internal sealed class TrackedUrlNormalizerTests
         Assert.That(longHit.UrlHash, Is.Not.EqualTo(shorterHit.UrlHash));
     }
 
+    /// <summary>
+    /// A domain longer than the column is truncated to 255 characters; the relative path still uses the full domain.
+    /// </summary>
+    [Test]
+    public void Normalize_Truncates_Long_Domain()
+    {
+        string domainName = new string('d', 300) + "/sitea";
+
+        TrackedUrlHit hit = TrackedUrlNormalizer.Normalize(Occurrence("/siteA/x", domainName, null), false, Now);
+
+        Assert.That(hit.Domain, Has.Length.EqualTo(255));
+        Assert.That(hit.Domain, Is.EqualTo(new string('d', 255)));
+        Assert.That(hit.RelativePath, Is.EqualTo("/x"));
+    }
+
     private static NotFoundOccurrence Occurrence(string pathAndQuery, string? domainName = null, string? culture = null)
     {
         Domain? domain = domainName is null ? null : new Domain(1, domainName, 1000, culture, false, 0);

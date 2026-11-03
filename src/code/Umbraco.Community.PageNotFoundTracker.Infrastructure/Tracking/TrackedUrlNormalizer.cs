@@ -14,6 +14,7 @@ internal static class TrackedUrlNormalizer
 {
     private const int MaxUrlLength = 2000;
     private const int MaxRelativePathLength = 800;
+    private const int MaxDomainLength = 255;
 
     /// <summary>
     /// Normalises an occurrence into a hit with a count of one.
@@ -42,7 +43,7 @@ internal static class TrackedUrlNormalizer
             Hash(url),
             Truncate(RelativeTo(path, domain), MaxRelativePathLength),
             Truncate(displayUrl, MaxUrlLength),
-            domain,
+            Truncate(domain, MaxDomainLength),
             occurrence.Culture ?? string.Empty,
             occurrence.IsFile,
             1,

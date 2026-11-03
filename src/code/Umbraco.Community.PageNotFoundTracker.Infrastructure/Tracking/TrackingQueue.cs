@@ -112,17 +112,20 @@ internal sealed class TrackingQueue
     }
 
     /// <summary>
-    /// Finishes the in-flight batch. On failure the batch goes back into the pending buffer, which is trimmed to the
-    /// capacity by dropping the entries with the oldest last seen time.
+    /// Finishes the in-flight batch. The hits that were not written go back into the pending buffer, which is then
+    /// trimmed to the capacity by dropping the entries with the oldest last seen time; the written hits are not
+    /// restored, so they are never counted twice.
     /// </summary>
-    /// <param name="succeeded">Whether the batch was written.</param>
-    public void CompleteBatch(bool succeeded)
+    /// <param name="failed">The hits of the batch that were not written; empty when the whole batch was written.</param>
+    public void CompleteBatch(IReadOnlyCollection<TrackedUrlHit> failed)
     {
+        ArgumentNullException.ThrowIfNull(failed);
+
         lock (this.gate)
         {
-            if (!succeeded)
+            if (failed.Count > 0)
             {
-                foreach (TrackedUrlHit hit in this.inFlight)
+                foreach (TrackedUrlHit hit in failed)
                 {
                     this.Merge(hit);
                 }

@@ -87,9 +87,10 @@ internal sealed class TrackingQueueTests
     {
         var queue = CreateQueue(out _, out _);
         queue.TryEnqueue(Hit("/a", "a", T0));
-        Assert.That(queue.TakeBatch(), Has.Count.EqualTo(1));
+        var failed = queue.TakeBatch();
+        Assert.That(failed, Has.Count.EqualTo(1));
 
-        queue.CompleteBatch(false);
+        queue.CompleteBatch(failed);
         Assert.That(queue.PendingCount, Is.EqualTo(1));
 
         queue.TryEnqueue(Hit("/a", "a", T0.AddMinutes(1)));
@@ -108,12 +109,12 @@ internal sealed class TrackingQueueTests
         var queue = CreateQueue(out _, out var logger, capacity: 2);
         queue.TryEnqueue(Hit("/old", "old", T0));
         queue.TryEnqueue(Hit("/mid", "mid", T0.AddMinutes(1)));
-        queue.TakeBatch();
-        queue.CompleteBatch(false);
+        queue.CompleteBatch(queue.TakeBatch());
         queue.TryEnqueue(Hit("/new", "new", T0.AddMinutes(2)));
-        Assert.That(queue.TakeBatch(), Has.Count.EqualTo(3));
+        var batch = queue.TakeBatch();
+        Assert.That(batch, Has.Count.EqualTo(3));
 
-        queue.CompleteBatch(false);
+        queue.CompleteBatch(batch);
 
         Assert.That(queue.PendingCount, Is.EqualTo(2));
         Assert.That(logger.Warnings, Has.Count.EqualTo(1));
@@ -131,10 +132,31 @@ internal sealed class TrackingQueueTests
         queue.TryEnqueue(Hit("/a", "a", T0));
         queue.TakeBatch();
 
-        queue.CompleteBatch(true);
+        queue.CompleteBatch([]);
 
         Assert.That(queue.PendingCount, Is.EqualTo(0));
         Assert.That(queue.TakeBatch(), Is.Empty);
+    }
+
+    /// <summary>
+    /// A partly failed batch restores only the failed hit, and its count is not doubled.
+    /// </summary>
+    [Test]
+    public void CompleteBatch_Partial_Failure_Restores_Only_Failed_Hits()
+    {
+        var queue = CreateQueue(out _, out _);
+        queue.TryEnqueue(Hit("/written", "written", T0));
+        queue.TryEnqueue(Hit("/written", "written", T0));
+        queue.TryEnqueue(Hit("/failed", "failed", T0));
+        queue.TryEnqueue(Hit("/failed", "failed", T0));
+        var batch = queue.TakeBatch();
+
+        queue.CompleteBatch([batch.Single(h => h.Url == "/failed")]);
+
+        Assert.That(queue.PendingCount, Is.EqualTo(1));
+        var next = queue.TakeBatch();
+        Assert.That(next.Single().Url, Is.EqualTo("/failed"));
+        Assert.That(next.Single().Count, Is.EqualTo(2));
     }
 
     private static TrackedUrlHit Hit(string url, string display, DateTime seen, string domain = "", string culture = "") =>

@@ -229,6 +229,33 @@ internal sealed class TrackingFlushServiceTests
         Assert.That(this.upsert.Calls, Is.Empty);
     }
 
+    /// <summary>
+    /// When the upsert reports one failed hit, only that hit is sent in the next flush (the written ones are not
+    /// counted twice).
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Partly_Failed_Upsert_Resends_Only_Failed_Hit()
+    {
+        this.state.SetAvailable();
+        this.service = this.CreateService();
+        this.upsert.FailUrlNext = "/b";
+        this.queue.TryEnqueue(Hit("/a"));
+        this.queue.TryEnqueue(Hit("/b"));
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.upsert.Calls[0], Has.Length.EqualTo(2));
+        Assert.That(this.queue.PendingCount, Is.EqualTo(1));
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.That(this.upsert.Calls, Has.Count.EqualTo(2));
+        Assert.That(this.upsert.Calls[1].Single().Url, Is.EqualTo("/b"));
+        Assert.That(this.upsert.Calls[1].Single().Count, Is.EqualTo(1));
+        Assert.That(this.queue.PendingCount, Is.EqualTo(0));
+    }
+
     private static TrackedUrlHit Hit(string url) =>
         new(url, "hash" + url, url, url, string.Empty, string.Empty, false, 1, T0, T0);
 
@@ -246,6 +273,7 @@ internal sealed class TrackingFlushServiceTests
             new TrackingDatabaseProviderSelector([new FakeProvider(ProviderName, this.upsert)]),
             connectionStrings.Object,
             serviceProvider,
+            new DefaultTrackedUrlUpsert(NullLogger<DefaultTrackedUrlUpsert>.Instance),
             Options.Create(settings ?? new PageNotFoundTrackerSettings()),
             this.time,
             NullLogger<TrackingFlushService>.Instance);
@@ -300,7 +328,9 @@ internal sealed class TrackingFlushServiceTests
             }
         }
 
-        public Task UpsertAsync(DbContext dbContext, IReadOnlyCollection<TrackedUrlHit> hits, CancellationToken cancellationToken)
+        public string? FailUrlNext { get; set; }
+
+        public Task<IReadOnlyCollection<TrackedUrlHit>> UpsertAsync(DbContext dbContext, IReadOnlyCollection<TrackedUrlHit> hits, CancellationToken cancellationToken)
         {
             lock (this.gate)
             {
@@ -319,7 +349,13 @@ internal sealed class TrackingFlushServiceTests
                 throw new OperationCanceledException();
             }
 
-            return Task.CompletedTask;
+            if (this.FailUrlNext is { } failUrl)
+            {
+                this.FailUrlNext = null;
+                return Task.FromResult<IReadOnlyCollection<TrackedUrlHit>>([.. hits.Where(h => h.Url == failUrl)]);
+            }
+
+            return Task.FromResult<IReadOnlyCollection<TrackedUrlHit>>([]);
         }
 
         public async Task WaitForCallsAsync(int count, TimeSpan timeout)

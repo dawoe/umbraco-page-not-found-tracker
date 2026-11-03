@@ -18,7 +18,7 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
 {
     private readonly SemaphoreSlim flushLock = new(1, 1);
-    private readonly DefaultTrackedUrlUpsert defaultUpsert = new();
+    private readonly DefaultTrackedUrlUpsert defaultUpsert;
     private readonly TrackingQueue queue;
     private readonly ITrackingPersistenceState persistenceState;
     private readonly TrackingDatabaseProviderSelector providerSelector;
@@ -36,6 +36,7 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
     /// <param name="providerSelector">The database provider selector.</param>
     /// <param name="connectionStrings">Umbraco's connection string options.</param>
     /// <param name="serviceProvider">The service provider; the context factory is resolved from it at flush time only.</param>
+    /// <param name="defaultUpsert">The generic upsert, used when the provider has none of its own.</param>
     /// <param name="settings">The settings.</param>
     /// <param name="timeProvider">The time provider.</param>
     /// <param name="logger">The logger.</param>
@@ -45,6 +46,7 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
         TrackingDatabaseProviderSelector providerSelector,
         IOptionsMonitor<ConnectionStrings> connectionStrings,
         IServiceProvider serviceProvider,
+        DefaultTrackedUrlUpsert defaultUpsert,
         IOptions<PageNotFoundTrackerSettings> settings,
         TimeProvider timeProvider,
         ILogger<TrackingFlushService> logger)
@@ -54,6 +56,7 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
         this.providerSelector = providerSelector;
         this.connectionStrings = connectionStrings;
         this.serviceProvider = serviceProvider;
+        this.defaultUpsert = defaultUpsert;
         this.settings = settings.Value;
         this.timeProvider = timeProvider;
         this.logger = logger;
@@ -133,12 +136,13 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
     private async Task FlushBatchAsync(CancellationToken cancellationToken)
     {
         IReadOnlyCollection<TrackedUrlHit> batch = this.queue.TakeBatch();
-        bool succeeded = false;
+
+        // Until the upsert reports otherwise the whole batch counts as not written (also when it throws).
+        IReadOnlyCollection<TrackedUrlHit> failed = batch;
         try
         {
             if (batch.Count == 0)
             {
-                succeeded = true;
                 return;
             }
 
@@ -147,8 +151,14 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
             IDbContextFactory<PageNotFoundTrackerDbContext> factory =
                 this.serviceProvider.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>();
             await using PageNotFoundTrackerDbContext dbContext = await factory.CreateDbContextAsync(cancellationToken);
-            await upsert.UpsertAsync(dbContext, batch, cancellationToken);
-            succeeded = true;
+            failed = await upsert.UpsertAsync(dbContext, batch, cancellationToken);
+            if (failed.Count > 0)
+            {
+                this.logger.LogWarning(
+                    "{Failed} of {Count} tracked 404 URLs could not be written; they stay pending for the next flush.",
+                    failed.Count,
+                    batch.Count);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -160,7 +170,7 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
         }
         finally
         {
-            this.queue.CompleteBatch(succeeded);
+            this.queue.CompleteBatch(failed);
         }
     }
 }

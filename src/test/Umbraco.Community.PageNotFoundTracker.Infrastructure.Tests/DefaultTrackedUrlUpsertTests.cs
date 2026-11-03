@@ -2,6 +2,7 @@
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
@@ -44,7 +45,7 @@ internal sealed class DefaultTrackedUrlUpsertTests
     [Test]
     public async Task Inserts_Then_Increments_And_Keeps_Latest_LastSeen()
     {
-        var upsert = new DefaultTrackedUrlUpsert();
+        var upsert = new DefaultTrackedUrlUpsert(NullLogger<DefaultTrackedUrlUpsert>.Instance);
 
         await this.UpsertAsync(upsert, Hit("/a", count: 2, first: T0, last: T0.AddMinutes(5)), Hit("/a", "x.com", "en", 1, T0, T0));
         await this.UpsertAsync(upsert, Hit("/a", count: 3, first: T0.AddMinutes(6), last: T0.AddMinutes(10)));
@@ -65,12 +66,31 @@ internal sealed class DefaultTrackedUrlUpsertTests
         });
     }
 
+    /// <summary>
+    /// A hit the database rejects is returned as not written, while the other hits of the batch are written.
+    /// SQLite does not enforce column lengths, so the rejected hit breaks the required (NOT NULL) Url column instead.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Returns_Failed_Hit_And_Writes_The_Others()
+    {
+        var upsert = new DefaultTrackedUrlUpsert(NullLogger<DefaultTrackedUrlUpsert>.Instance);
+        TrackedUrlHit poison = Hit("/poison") with { Url = null! };
+
+        var failed = await this.UpsertAsync(upsert, Hit("/a"), poison, Hit("/b"));
+
+        Assert.That(failed, Is.EqualTo(new[] { poison }));
+        using var context = new PageNotFoundTrackerDbContext(this.options);
+        var urls = await context.TrackedUrls.OrderBy(r => r.Url).Select(r => r.Url).ToListAsync();
+        Assert.That(urls, Is.EqualTo(new[] { "/a", "/b" }));
+    }
+
     private static TrackedUrlHit Hit(string url, string domain = "", string culture = "", int count = 1, DateTime? first = null, DateTime? last = null) =>
         new(url, "hash" + url, url, url, domain, culture, false, count, first ?? T0, last ?? T0);
 
-    private async Task UpsertAsync(DefaultTrackedUrlUpsert upsert, params TrackedUrlHit[] hits)
+    private async Task<IReadOnlyCollection<TrackedUrlHit>> UpsertAsync(DefaultTrackedUrlUpsert upsert, params TrackedUrlHit[] hits)
     {
         using var context = new PageNotFoundTrackerDbContext(this.options);
-        await upsert.UpsertAsync(context, hits, CancellationToken.None);
+        return await upsert.UpsertAsync(context, hits, CancellationToken.None);
     }
 }

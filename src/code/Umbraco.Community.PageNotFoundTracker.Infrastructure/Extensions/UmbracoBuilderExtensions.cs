@@ -56,6 +56,7 @@ internal static class UmbracoBuilderExtensions
         // Database providers are registered with Add (not TryAdd), so several can exist; the selector picks the last
         // registered one for Umbraco's provider name.
         services.AddSingleton<TrackingDatabaseProviderSelector>();
+        services.AddSingleton<DefaultTrackedUrlUpsert>();
 
         // The options action runs when the pooled factory is first resolved, which only the flush does, after the
         // gate opened. With no matching provider the options stay unconfigured.
