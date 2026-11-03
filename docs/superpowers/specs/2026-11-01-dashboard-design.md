@@ -1,6 +1,6 @@
 # Spec 4: Backoffice dashboard for tracked URLs
 
-Status: draft, awaiting builder check and approval
+Status: approved
 Depends on: spec 1 (solution setup), spec 3 (tracking)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 
@@ -192,6 +192,7 @@ These are the writer's calls, not decisions the user made:
   formats them in the user's locale and timezone, and sorting uses the raw values.
 - Relative path (added after the cross-spec review): list items also carry the `RelativePath`
   from spec 3, which row actions in specs 5 and 6 use. It is not a column.
+- The real dashboard replaces the spec 1 placeholder (Settings section): its manifest, element and the E2E smoke test are removed or moved to the new dashboard in the Content section.
 - When persistence is unavailable (spec 3), the dashboard shows a readable "database
   unsupported or unavailable" state and the endpoints return a clear error.
 
