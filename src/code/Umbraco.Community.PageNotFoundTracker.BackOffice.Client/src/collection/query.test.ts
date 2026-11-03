@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildListQuery } from './query';
+import { buildListQuery, fromCollectionFilter } from './query';
 import { PNFT_EMPTY } from './types';
 
 describe('buildListQuery', () => {
@@ -80,5 +80,43 @@ describe('buildListQuery', () => {
       expect(query).not.toHaveProperty('noDomain');
       expect(query).not.toHaveProperty('noCulture');
     }
+  });
+});
+
+describe('fromCollectionFilter', () => {
+  it('fromCollectionFilter_MapsTheFrameworkTextFilterToSearch', () => {
+    expect(fromCollectionFilter({ filter: 'wp-admin' }).search).toBe('wp-admin');
+  });
+
+  it('fromCollectionFilter_KeepsANonBlankSearchUntrimmed', () => {
+    expect(fromCollectionFilter({ filter: ' wp ' }).search).toBe(' wp ');
+  });
+
+  it('fromCollectionFilter_MapsOrderDirectionToDirection', () => {
+    const filter = fromCollectionFilter({ skip: 20, take: 50, orderBy: 'Url', orderDirection: 'Ascending' });
+
+    expect(filter).toStrictEqual({ skip: 20, take: 50, orderBy: 'Url', direction: 'Ascending' });
+  });
+
+  it('fromCollectionFilter_PassesDomainAndCultureIncludingTheEmptyMarker', () => {
+    const filter = fromCollectionFilter({ domain: PNFT_EMPTY, culture: 'nl-NL' });
+
+    expect(filter.domain).toBe(PNFT_EMPTY);
+    expect(filter.culture).toBe('nl-NL');
+  });
+
+  it('fromCollectionFilter_IgnoresKeysTheApiDoesNotKnow', () => {
+    const filter = fromCollectionFilter({ pageSize: 20, take: 20 } as never);
+
+    expect(filter).toStrictEqual({ take: 20 });
+  });
+
+  it('fromCollectionFilter_ThenBuildListQuery_DefaultsToHitsDescending', () => {
+    expect(buildListQuery(fromCollectionFilter({}))).toStrictEqual({
+      skip: 0,
+      take: 20,
+      orderBy: 'Hits',
+      direction: 'Descending',
+    });
   });
 });

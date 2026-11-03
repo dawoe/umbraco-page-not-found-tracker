@@ -22,6 +22,22 @@ export interface PnftCollectionFilter {
   culture?: PnftFilterValue;
 }
 
+/**
+ * The filter as the Umbraco collection context holds it: the framework's `skip`, `take` and `filter`
+ * (the search text) and its `orderBy`/`orderDirection` ordering keys, plus the domain and culture filters.
+ * The repository maps it to {@link PnftCollectionFilter} with `fromCollectionFilter`.
+ */
+export interface PnftTrackedUrlCollectionFilterModel {
+  skip?: number;
+  take?: number;
+  /** The URL search text (the framework's text filter). */
+  filter?: string;
+  orderBy?: TrackedUrlSortColumn;
+  orderDirection?: DirectionModel;
+  domain?: PnftFilterValue;
+  culture?: PnftFilterValue;
+}
+
 /** One row of the tracked URL collection. */
 export interface PnftTrackedUrlCollectionModel {
   entityType: typeof PNFT_TRACKED_URL_ENTITY_TYPE;

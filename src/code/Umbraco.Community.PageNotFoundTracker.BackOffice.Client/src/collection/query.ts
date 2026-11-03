@@ -1,5 +1,10 @@
 import type { GetTrackedUrlsData } from '../api/index.js';
-import { PNFT_EMPTY, type PnftCollectionFilter, type PnftFilterValue } from './types.js';
+import {
+  PNFT_EMPTY,
+  type PnftCollectionFilter,
+  type PnftFilterValue,
+  type PnftTrackedUrlCollectionFilterModel,
+} from './types.js';
 
 /** The list query parameters of the Management API. */
 export type PnftListQuery = NonNullable<GetTrackedUrlsData['query']>;
@@ -31,6 +36,47 @@ export function buildListQuery(filter: Partial<PnftCollectionFilter>): PnftListQ
   applyValueFilter(filter.culture, (value) => (query.culture = value), () => (query.noCulture = true));
 
   return query;
+}
+
+/**
+ * Maps the filter the Umbraco collection context holds to the repository filter. Pure.
+ *
+ * The framework's text filter (`filter`) becomes `search` (untrimmed; `buildListQuery` drops a blank one,
+ * as the server would), `orderDirection` becomes `direction`. Keys the API does not know (for example the
+ * `pageSize` the context copies from its configuration) are dropped.
+ */
+export function fromCollectionFilter(filter: PnftTrackedUrlCollectionFilterModel): Partial<PnftCollectionFilter> {
+  const mapped: Partial<PnftCollectionFilter> = {};
+
+  if (filter.skip !== undefined) {
+    mapped.skip = filter.skip;
+  }
+
+  if (filter.take !== undefined) {
+    mapped.take = filter.take;
+  }
+
+  if (filter.orderBy !== undefined) {
+    mapped.orderBy = filter.orderBy;
+  }
+
+  if (filter.orderDirection !== undefined) {
+    mapped.direction = filter.orderDirection;
+  }
+
+  if (filter.filter !== undefined) {
+    mapped.search = filter.filter;
+  }
+
+  if (filter.domain !== undefined) {
+    mapped.domain = filter.domain;
+  }
+
+  if (filter.culture !== undefined) {
+    mapped.culture = filter.culture;
+  }
+
+  return mapped;
 }
 
 function applyValueFilter(value: PnftFilterValue | undefined, setValue: (value: string) => void, setEmpty: () => void): void {

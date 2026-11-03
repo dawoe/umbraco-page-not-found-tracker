@@ -9,7 +9,8 @@ import type { PnftCollectionFilter, PnftTrackedUrlCollectionModel, PnftTrackedUr
 
 /**
  * Reads tracked URLs from the package's Management API through the generated client (configured
- * with Umbraco's auth in entry.ts). Errors are handled and notified by `tryExecute`.
+ * with Umbraco's auth in entry.ts). Errors are returned, not notified: the collection shows them as its
+ * error and unavailable states.
  */
 export class PnftTrackedUrlServerDataSource {
   #host: UmbControllerHost;
@@ -20,7 +21,9 @@ export class PnftTrackedUrlServerDataSource {
 
   /** Gets one page of tracked URLs. */
   async getCollection(filter: Partial<PnftCollectionFilter>): Promise<UmbRepositoryResponse<UmbPagedModel<PnftTrackedUrlCollectionModel>>> {
-    const { data, error } = await tryExecute(this.#host, getTrackedUrls({ query: buildListQuery(filter) }));
+    const { data, error } = await tryExecute(this.#host, getTrackedUrls({ query: buildListQuery(filter) }), {
+      disableNotifications: true,
+    });
 
     if (error || !data) {
       return { error };
@@ -31,7 +34,7 @@ export class PnftTrackedUrlServerDataSource {
 
   /** Gets the choices of the domain and culture filters. */
   async getFilterOptions(): Promise<UmbRepositoryResponse<PnftTrackedUrlFilterOptionsModel>> {
-    const { data, error } = await tryExecute(this.#host, getTrackedUrlFilterOptions());
+    const { data, error } = await tryExecute(this.#host, getTrackedUrlFilterOptions(), { disableNotifications: true });
 
     if (error || !data) {
       return { error };
