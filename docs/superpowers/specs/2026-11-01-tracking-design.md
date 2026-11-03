@@ -1,6 +1,6 @@
 # Spec 3: Tracking of 404 URLs
 
-Status: builder check done, awaiting approval (issue #3, branch `feature/3-tracking`)
+Status: implemented (issue #3, branch `feature/3-tracking`)
 Depends on: spec 1 (solution setup), spec 2 (404 handling)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 
@@ -338,6 +338,33 @@ These are the writer's calls, not decisions the user made:
   name, the last registration wins (so an implementer can replace a built-in one); hits that
   arrive before migrations finish are queued as usual and flushed once the startup gate opens;
   with `IncludeQueryString` off, `DisplayUrl` holds the path without the query string.
+
+- During the build (writer's calls):
+  - SQLite WAL: the SQLite provider does not set the journal mode. Umbraco 17 already runs SQLite in WAL mode
+    (unlike Merchello's setup), so the "enables WAL journaling" line under Built-in providers is not needed.
+  - URL length handling: the unique index is on `UrlHash` (SHA-256 hex, 64 characters, of the full normalised URL
+    before truncation), `Domain` and `Culture`, not on `Url`, so it fits SQL Server's index key limit and behaves the
+    same on SQLite. Stored values are truncated: `Url` and `DisplayUrl` 2000 characters, `RelativePath` 800 (it is
+    indexed), `Domain` 255; `Culture` is a 50 character column. Two long URLs that only differ after the cut stay
+    two records.
+  - Memory bound: one bound for queue and retry. `ChannelCapacity` (default 10000) caps the channel (full: the new hit
+    is dropped, warned at most once a minute with the count) and the pending (merge + retry) buffer in identities
+    (over it after a failed write: the entries with the oldest `LastSeen` are dropped, with a warning).
+  - `ITrackedUrlUpsert.UpsertAsync` returns the hits it did not write (the default writes per identity, so one bad
+    row does not fail the batch); only those go back to the pending buffer, so written hits are never counted twice.
+    An implementation that throws counts as having written nothing, so a batching override must be all-or-nothing.
+  - With `IncludeQueryString` on, the query string is lower-cased but not percent-decoded (the path is decoded).
+    Parameter order is not normalised.
+  - The provider composers (`SqlitePersistenceComposer`, `SqlServerPersistenceComposer`) are public so an
+    implementer can `[ComposeAfter]` them to replace a built-in provider for the same name.
+  - SQL Server is tested at the database layer only (migrations, upsert, concurrency) through
+    `PNFT_SQLSERVER_CONNECTION`, a server-level connection string; each run creates and drops a `pnft_test_<guid>`
+    database. CI uses the service container; local runs may use Docker or a LocalDB instance.
+  - `FlushInterval` below one second is raised to one second; zero or negative, and a `ChannelCapacity` below one,
+    fall back to the defaults.
+  - The test site project-references both provider projects: the entry project references them with
+    `PrivateAssets=all` and never uses them in code, so a project-referencing site would not get their dlls
+    (NuGet consumers get them from `lib/`).
 
 ## Acceptance
 

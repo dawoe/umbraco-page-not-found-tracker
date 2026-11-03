@@ -7,16 +7,17 @@ Guidance for Claude Code when working in this repository.
 `Umbraco.Community.PageNotFoundTracker` is an Umbraco 17 (LTS, .NET 10) package that records
 requests that end in a 404 and, in later versions, lets editors turn tracked URLs into redirects
 or block them. Built today: the foundation (spec 1: solution, build, test, pack, publish, a
-placeholder backoffice dashboard, a test site that runs in four scenarios) and 404 handling
-(spec 2: the configured 404 page is shown for missing pages and missing files). Nothing is
-recorded yet: tracking, the dashboard, redirects and blocking (specs 3 to 7) are planned, not
-built. Do not document or promise them as existing.
+placeholder backoffice dashboard, a test site that runs in four scenarios), 404 handling
+(spec 2: the configured 404 page is shown for missing pages and missing files) and tracking (spec 3:
+every 404 is counted per URL in a database table, SQLite or SQL Server). Nothing reads the tracked
+data yet: the dashboard, redirects, blocking and implementer documentation (specs 4 to 7) are planned,
+not built. Do not document or promise them as existing.
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
 
 1. Solution setup: `docs/superpowers/specs/2026-11-01-solution-setup-design.md` (done)
 2. 404 handling for pages and files: `docs/superpowers/specs/2026-11-01-not-found-handling-design.md` (done)
-3. Tracking of 404 URLs: `docs/superpowers/specs/2026-11-01-tracking-design.md`
+3. Tracking of 404 URLs: `docs/superpowers/specs/2026-11-01-tracking-design.md` (done)
 4. Backoffice dashboard: `docs/superpowers/specs/2026-11-01-dashboard-design.md`
 5. Redirect creation: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md`
 6. Blocked URLs: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md`
@@ -26,6 +27,7 @@ Plans (`docs/superpowers/plans/`):
 
 - Solution setup: `docs/superpowers/plans/2026-11-01-solution-setup.md`
 - 404 handling: `docs/superpowers/plans/2026-11-02-not-found-handling.md`
+- Tracking: `docs/superpowers/plans/2026-11-03-tracking.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -39,7 +41,10 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
   Holds `UsePageNotFoundTracker()` (`Extensions/WebApplicationExtensions.cs`)
 - `src/code/Umbraco.Community.PageNotFoundTracker.Core/` — settings, models, interfaces only
 - `src/code/Umbraco.Community.PageNotFoundTracker.Infrastructure/` — composer, middleware,
-  services, persistence
+  services, the tracking `DbContext`, queue, flush and migration services
+- `src/code/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite/` and `.Persistence.SqlServer/` —
+  tracking database providers, each with its own EF Core `Migrations/` and a design-time factory
+  (`IsPackable=false`, bundled into the entry package)
 - `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice/` — Razor class library, later the
   Management API. Its `wwwroot/App_Plugins/PageNotFoundTracker` is the client build output (gitignored)
 - `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client/` — backoffice client
@@ -47,10 +52,14 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
 - `src/test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests/` and `.BackOffice.Tests/` —
   NUnit + Moq unit tests
 - `src/test/Umbraco.Community.PageNotFoundTracker.Integration.Tests/` — Umbraco integration tests
-  (boots Umbraco on SQLite with the package composed in)
+  (boots Umbraco on SQLite with the package composed in; tracking database tests on SQLite and SQL Server)
 - `src/test/Umbraco.Community.PageNotFoundTracker.E2E/` — Playwright tests
 - `test-sites/Website-V17/` — Umbraco 17 test site (Clean starter kit), project-references the
-  entry package; in the solution, never packed (`IsPackable=false`)
+  entry package and both persistence projects (the entry project references them `PrivateAssets=all` and never
+  uses them in code, so a project-referencing site would not get their dlls and tracking would be off); in the
+  solution, never packed (`IsPackable=false`)
+- `scripts/` — `add-migration.ps1` and `check-pending-model-changes.ps1` (tracking migrations);
+  `.config/dotnet-tools.json` pins `dotnet-ef` 10.0.12 (the scripts run `dotnet tool restore`)
 - `src/assets/` — NuGet readme (`readme.md`) and icon (`logo.png`)
 - `.github/workflows/` — `pr-validation.yml`, `beta-release.yml`, `release.yml`;
   `.github/scripts/check-package.ps1` asserts the packed nupkg is complete
@@ -71,7 +80,10 @@ npm run build
 cd src
 dotnet restore
 dotnet build
-dotnet test
+dotnet test     # SQL Server tracking tests are skipped unless PNFT_SQLSERVER_CONNECTION is set (see Tracking)
+
+# Migrations (from the repo root): both providers have no pending model changes
+pwsh scripts/check-pending-model-changes.ps1
 
 # Pack: from src/, WITHOUT --no-build (NETSDK1085 at solution level), then check the package
 cd src
@@ -93,15 +105,17 @@ Expected: zero analyzer warnings from `dotnet build`.
 
 Packing facts:
 
-- ONE nupkg contains everything: entry dll plus Core, Infrastructure and BackOffice dlls (and xml
-  docs) in `lib/net10.0`, and the client bundle as `staticwebassets/App_Plugins/PageNotFoundTracker/*`.
-  Only the entry project is packable.
+- ONE nupkg contains everything: entry dll plus Core, Infrastructure, BackOffice, Persistence.Sqlite and
+  Persistence.SqlServer dlls (and xml docs) in `lib/net10.0`, and the client bundle as
+  `staticwebassets/App_Plugins/PageNotFoundTracker/*`. Only the entry project is packable.
 - Pack fails loudly (`EnsureClientBundleBuiltBeforePack`) when the client bundle is missing: run
-  the client build first. `check-package.ps1` additionally asserts exactly one nupkg and the five
-  key files.
+  the client build first. `check-package.ps1` additionally asserts exactly one nupkg and the seven
+  key files (six dlls and `entry-point.js`).
 - The sibling projects are `PrivateAssets=all`, so their package references do not flow
-  transitively. A new `PackageReference` in Infrastructure or BackOffice must be mirrored in the
-  entry csproj (as `Umbraco.Cms.Api.Management` is) or consumers will miss it.
+  transitively. A new `PackageReference` in any sibling project (Core, Infrastructure, BackOffice, a
+  persistence project) must be mirrored in the entry csproj (as `Umbraco.Cms.Api.Management` and `Umbraco.Cms.Persistence.EFCore` are) or
+  consumers will miss it. `Microsoft.EntityFrameworkCore.Design` is `PrivateAssets=all` (migrations tooling only)
+  and is not mirrored.
 - Known gap: the sibling pdbs are not in the `snupkg`.
 - The client bundle is a static web asset of the entry project, not of BackOffice (BackOffice has
   `StaticWebAssetsEnabled=false`). The entry csproj links the BackOffice `wwwroot/**` in as `Content` under
@@ -125,6 +139,7 @@ can run side by side. Run with `dotnet run --launch-profile <name>` from `test-s
 | `multi-site-aliases` | Two sites told apart by path (Site A, Site B) | 44402 / 44302 | `https://localhost:44402/siteA/...`, `/siteB/...` | `multi-site-aliases.sqlite.db` |
 | `multi-language` | One site, en-US (default), nl-NL, fr-FR | 44403 / 44303 | `https://localhost:44403/en`, `/nl`, `/fr` | `multi-language.sqlite.db` |
 | `multi-site-hostnames` | Two sites told apart by hostname | 44404 / 44304 | `https://www.siteA.local:44404/`, `https://www.siteB.local:44404/` | `multi-site-hostnames.sqlite.db` |
+| `sql-server` | One site, one language, SQL Server | 44405 / 44305 | `https://localhost:44405/` | SQL Server `PageNotFoundTracker` on `localhost,14330` (not committed) |
 
 Backoffice: `https://localhost:<port>/umbraco`, login `admin@example.com` / `1234567890`
 (unattended install creates this user; login is by email).
@@ -174,7 +189,37 @@ that resolves to this machine. To use it:
 3. Without editing hosts you can still test with `curl -k --resolve www.siteA.local:44404:127.0.0.1
    https://www.siteA.local:44404/about`.
 
-Only `single-site` is verified in CI. The other profiles were verified manually.
+### SQL Server profile setup
+
+`sql-server` proves the package on SQL Server (tracking, migrations). Its connection string is
+`Server=localhost,14330;Database=PageNotFoundTracker;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`
+(provider `Microsoft.Data.SqlClient`; test-only values, never reuse them). It has no MCP user, no committed database
+and no scenario content beyond what the Clean install creates (tracking needs no 404 page). Start SQL Server in Docker:
+
+```bash
+docker run -d --name pnft-sqlserver -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=PnftTest-only1!' \
+  -p 14330:1433 mcr.microsoft.com/mssql/server:2022-latest
+```
+
+Then `dotnet run --launch-profile sql-server`. The first start logs "Cannot open database" / "database not available"
+errors until the unattended install creates the `PageNotFoundTracker` database (it does, with the `sa` login), installs
+Umbraco and Clean; then the package migrates its tables. Reset with `docker rm -f pnft-sqlserver`.
+
+Without Docker, run against a LocalDB instance instead. `launchSettings.json` environment variables override shell
+variables in `dotnet run`, so override the connection string with a command-line argument (highest configuration
+precedence) rather than `$env:`:
+
+```powershell
+sqllocaldb create pnft-test; sqllocaldb start pnft-test
+dotnet run --launch-profile sql-server -- "--ConnectionStrings:umbracoDbDSN=Server=(localdb)\pnft-test;Database=PageNotFoundTracker;Integrated Security=True;TrustServerCertificate=True"
+# afterwards: sqlcmd -S "(localdb)\pnft-test" -Q "ALTER DATABASE [PageNotFoundTracker] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [PageNotFoundTracker]"
+```
+
+Use a named instance, not the shared `MSSQLLocalDB` or a full local SQL Server. Running the profile still rewrites
+`appsettings.json` (HMAC key): restore it with `git checkout`.
+
+Only `single-site` is verified in CI. The other profiles were verified manually (`sql-server` against LocalDB through
+the override above, not against the Docker container).
 
 ## Committed databases (read this before running a profile)
 
@@ -344,7 +389,7 @@ dictionary stops at the `CultureInfo.InvariantCulture` instance by reference, so
 duplicate the list.
 
 **Recording call point (spec 3).** `INotFoundRecorder.RecordAsync(NotFoundOccurrence, ct)` (internal);
-`NoOpNotFoundRecorder` is the default. `NotFoundOccurrence(PathAndQuery, Domain?, Culture?, IsFile, PageResolved)`.
+`NotFoundTracker` (spec 3, see Tracking) is the default. `NotFoundOccurrence(PathAndQuery, Domain?, Culture?, IsFile, PageResolved)`.
 Both paths call it once per request: `NotFoundRequestItems.TryMarkRecorded` (key in `HttpContext.Items`)
 guards it. The middleware records before rendering, so a failed render is still `PageResolved=true`. Recorder
 exceptions are logged and swallowed. The finder is a singleton: keep a recorder singleton-compatible or
@@ -382,10 +427,113 @@ preservation, `/about` 200 and the Management API; the other three profiles were
 Clean quirk, not ours: on alias and culture domains the canonical link doubles the prefix
 (`/siteb/siteb/error/`), also on normal 200 pages; `<html lang="en">` is hardcoded.
 
+## Tracking (spec 3)
+
+**Settings** (`PageNotFoundTrackerSettings`, section `Umbraco:Community:PageNotFoundTracker`, read once at startup,
+a change needs a restart):
+
+| Setting | Default | Notes |
+|---|---|---|
+| `TrackingEnabled` | `true` | Off: nothing is queued and the flush service does nothing. Migrations still run. |
+| `FlushInterval` | `00:01:00` | Minimum 1 s; zero or negative means the default (`EffectiveFlushInterval`). |
+| `IncludeQueryString` | `false` | On: the query string is part of the identity (parameter order not normalised). |
+| `ChannelCapacity` | `10000` | Queue size and the bound of the pending (merge + retry) buffer; below 1 means the default. |
+
+**Flow.** Both 404 call points (spec 2) call `INotFoundRecorder`; `NotFoundTracker` (internal, `TryAddSingleton`)
+normalises the occurrence with `TrackedUrlNormalizer` and writes it to `TrackingQueue` without awaiting and without
+throwing. It does nothing when tracking is off or the persistence state is `Unavailable`. `TrackingQueue` is a bounded
+channel: when full the new hit is dropped, with at most one warning per minute stating the number dropped. The hosted
+`TrackingFlushService` (also `ITrackingFlusher`, which integration tests use to force a flush) waits for the startup
+gate, then every `FlushInterval` drains the channel into a pending buffer merged per identity (count summed, earliest
+`FirstSeen`, latest `LastSeen`, first-seen `DisplayUrl` and `IsFile`) and writes it. Hits not written stay pending for
+the next flush; when they bring the pending buffer past `ChannelCapacity` identities, the entries with the oldest
+`LastSeen` are dropped (with a warning). Pending buffer, retry and in-flight batch share one lock (a later discard can take it). `StopAsync` flushes
+once more within the host's shutdown time. No database write happens in the request pipeline.
+
+**Identity** = `UrlHash` + `Domain` + `Culture` (unique index). `Url` is the decoded path, lower-cased (invariant),
+repeated and trailing slashes removed, with the full alias prefix (`/sitea/...`); with `IncludeQueryString` the query
+is appended lower-cased but **not** percent-decoded. `UrlHash` is the SHA-256 (hex) of the full `Url` before
+truncation, so long URLs stay distinct. `DisplayUrl` is the first-seen spelling (without the query when
+`IncludeQueryString` is off). `RelativePath` is `Url`'s path with the domain's own path removed (indexed, not unique).
+`Domain` is the matched domain name lower-cased, `Culture` as Umbraco returns it; both are an empty string (never null)
+without a match. Truncation: `Url`/`DisplayUrl` 2000, `RelativePath` 800, `Domain` 255 (`Culture` column 50).
+
+**Data model.** Table `pageNotFoundTrackerUrl` (`TrackingConstants.TableName`, entity `TrackedUrl` in Core):
+`Id`, `Url`, `UrlHash`, `RelativePath`, `DisplayUrl`, `Domain`, `Culture`, `IsFile`, `HitCount`, `FirstSeen`,
+`LastSeen` (UTC `DateTime`, never `DateTimeOffset`). EF Core history table `__pageNotFoundTrackerMigrations`
+(`TrackingConstants.MigrationsHistoryTable`, schema `dbo` on SQL Server). `PageNotFoundTrackerDbContext`
+(Infrastructure, public so provider projects can hold its migrations) is registered with `AddUmbracoDbContext<T>`
+(`Umbraco.Cms.Persistence.EFCore`, connection `umbracoDbDSN` as Umbraco resolves it, `|DataDirectory|` included).
+
+**Startup gate.** `TrackingMigrationService` waits for `RuntimeLevel.Run` (so after Umbraco's own unattended
+install), selects the provider for Umbraco's provider name and runs `Database.MigrateAsync`. `ITrackingPersistenceState`
+(Core, public) reports `Pending` / `Available` / `Unavailable`, with `WaitUntilReadyAsync` for later specs. No matching
+provider: one error log naming the provider, `Unavailable`, the site keeps serving. A failed migration: error log,
+`Unavailable` (no retry in that run). Hits arriving while `Pending` are queued and flushed once the gate opens.
+
+**Upsert.** `DefaultTrackedUrlUpsert` (shared EF Core, every provider): per hit an `ExecuteUpdate` (`HitCount +=
+n`, `LastSeen = max`), then an insert when no row matched; on a unique violation (another server inserted) the update
+is retried once. `ITrackedUrlUpsert.UpsertAsync` returns the hits it did not write; only those stay pending. An
+implementation that throws counts as having written nothing, so a batching override must be all-or-nothing.
+
+**Providers.** `ITrackingDatabaseProvider` (Core): `ProviderName` (Umbraco's `umbracoDbDSN_ProviderName`, e.g.
+`Microsoft.Data.Sqlite`, `Microsoft.Data.SqlClient`), `ConfigureDbContext(options, connectionString)` (provider,
+`MigrationsAssembly`, `MigrationsHistoryTable(TrackingConstants.MigrationsHistoryTable)`), optional `Upsert` (default
+interface member, `null` = the shared upsert). Built in: `SqliteTrackingDatabaseProvider` / `SqlitePersistenceComposer`
+and `SqlServerTrackingDatabaseProvider` / `SqlServerPersistenceComposer` (public sealed). Providers are registered with
+`AddSingleton` (not `TryAdd`); `TrackingDatabaseProviderSelector` picks the **last** registration for a name, so a
+composer that runs later replaces a built-in one. The SQLite provider does not set WAL (Umbraco 17 already runs SQLite
+in WAL). A custom provider must ship migrations for **all** package tables (later specs add tables; implementers
+must follow), generated against `PageNotFoundTrackerDbContext` with an `IDesignTimeDbContextFactory`, as the built-in
+projects do. Minimal example:
+
+```csharp
+public sealed class MyTrackingDatabaseProvider : ITrackingDatabaseProvider
+{
+    public string ProviderName => "My.Data.Provider"; // Umbraco's connection string provider name
+
+    public void ConfigureDbContext(DbContextOptionsBuilder options, string connectionString) =>
+        options.UseMyDatabase(connectionString, db => db // the database's EF Core provider
+            .MigrationsAssembly(typeof(MyTrackingDatabaseProvider).Assembly.GetName().Name)
+            .MigrationsHistoryTable(TrackingConstants.MigrationsHistoryTable));
+
+    // Optional: public ITrackedUrlUpsert? Upsert => new MyUpsert();
+}
+
+[ComposeAfter(typeof(SqlitePersistenceComposer))]    // only needed to replace a built-in name
+[ComposeAfter(typeof(SqlServerPersistenceComposer))]
+public sealed class MyTrackingComposer : IComposer
+{
+    public void Compose(IUmbracoBuilder builder) =>
+        builder.Services.AddSingleton<ITrackingDatabaseProvider, MyTrackingDatabaseProvider>();
+}
+```
+
+**Migrations.** `pwsh scripts/add-migration.ps1 -Name <Name>` adds the same migration to both provider projects
+(design-time factories, no database needed; prepends the copyright header; `src/.editorconfig` marks
+`Migrations/*.cs` generated, so the build stays at zero warnings). `pwsh scripts/check-pending-model-changes.ps1`
+fails when either provider has model changes no migration covers (CI runs it). Both scripts run `dotnet tool restore`
+(`dotnet-ef` 10.0.12, `.config/dotnet-tools.json`, `rollForward=false`; keep it at the EF Core version Umbraco
+resolves). The two `InitialCreate` ids differ by a few seconds per provider; that is not drift.
+
+**SQL Server tests.** The database-layer integration tests (`TrackingDatabaseFixture`: migrations, upsert, concurrent
+flushes) run on SQLite and, when `PNFT_SQLSERVER_CONNECTION` is set, on SQL Server; otherwise the SQL Server cases are
+ignored with a message. The value is a **server-level** connection string (no `Database=`); each fixture creates and
+drops a `pnft_test_<guid>` database. Docker (see SQL Server profile setup):
+`Server=localhost,14330;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`. LocalDB:
+`Server=(localdb)\<instance>;Integrated Security=True;TrustServerCertificate=True` (a named instance, not
+`MSSQLLocalDB`). CI uses a `mssql` service container on port 1433. Umbraco itself boots only on SQLite in the tests
+(`TrackingEndToEndTests`: a 404 request plus a forced flush gives a row); the full site on SQL Server is the
+`sql-server` profile.
+
+**Test site.** Running a SQLite profile creates the tracking tables in its committed database and fills them; never
+commit that (restore with `git checkout`, see Committed databases). Committed databases hold no tracking tables or rows.
+
 ## Tests
 
 - Unit: NUnit + Moq, coverlet. One project per code project with logic.
-- Integration (`Umbraco.Cms.Tests.Integration` 17.8.0): own `appsettings.Tests.json` (SQLite),
+- Integration (`Umbraco.Cms.Tests.Integration` 17.8.0; SQL Server tracking cases need `PNFT_SQLSERVER_CONNECTION`,
+  see Tracking): own `appsettings.Tests.json` (SQLite),
   `GlobalSetup.cs` in the global namespace. NUnit is pinned to 3.14.0 with `VersionOverride` in that
   project only (AutoFixture.NUnit3 needs NUnit 3.x); the central `Moq` 4.21.0 and
   `Microsoft.NET.Test.Sdk` 18.10.1 are what that package requires. Do not lower them.
@@ -399,6 +547,11 @@ Clean quirk, not ours: on alias and culture domains the canonical link doubles t
 
 ## CI and repository settings
 
+- All three workflows run a `mssql` service container (`mcr.microsoft.com/mssql/server:2022-latest`, port 1433,
+  health check `/opt/mssql-tools18/bin/sqlcmd -C ... -Q "SELECT 1"`), run `scripts/check-pending-model-changes.ps1`
+  after the build and set `PNFT_SQLSERVER_CONNECTION=Server=localhost,1433;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`
+  on the test step (test-only values, literal because service settings cannot read the `env` context). Keep the three
+  in step. The service container is unverified until the first CI run.
 - `pr-validation.yml` (PRs to `develop`): client build, restore, build, test with coverage, pack and
   `check-package.ps1`, then E2E against `single-site` (dev cert without trust, `curl -k` wait loop).
   The Linux dev-cert/E2E step is unverified until the first PR run.
