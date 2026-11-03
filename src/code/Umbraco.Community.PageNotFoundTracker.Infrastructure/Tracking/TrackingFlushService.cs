@@ -93,9 +93,21 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         await base.StopAsync(cancellationToken);
-        if (this.settings.TrackingEnabled)
+        if (!this.settings.TrackingEnabled)
         {
-            await this.FlushAsync(cancellationToken);
+            return;
+        }
+
+        await this.FlushAsync(cancellationToken);
+
+        // Whatever is still queued now (the final flush was cancelled, ran past the shutdown deadline or failed) is
+        // lost with the process.
+        int lost = this.queue.Count;
+        if (lost > 0)
+        {
+            this.logger.LogWarning(
+                "{Count} tracked 404 URLs could not be written before shutdown and are lost.",
+                lost);
         }
     }
 
@@ -152,9 +164,22 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
                 this.serviceProvider.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>();
             await using PageNotFoundTrackerDbContext dbContext = await factory.CreateDbContextAsync(cancellationToken);
             failed = await upsert.UpsertAsync(dbContext, batch, cancellationToken);
-            if (failed.Count > 0)
+            if (failed.Count == 0)
+            {
+                return;
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                this.logger.LogDebug(
+                    "Writing tracked 404 URLs was cancelled; {Failed} of {Count} stay pending.",
+                    failed.Count,
+                    batch.Count);
+            }
+            else
             {
                 this.logger.LogWarning(
+                    (failed as FailedTrackedUrlHits)?.FirstException,
                     "{Failed} of {Count} tracked 404 URLs could not be written; they stay pending for the next flush.",
                     failed.Count,
                     batch.Count);

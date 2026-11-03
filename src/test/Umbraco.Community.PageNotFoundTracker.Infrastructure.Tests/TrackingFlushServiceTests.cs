@@ -1,7 +1,9 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -257,10 +259,113 @@ internal sealed class TrackingFlushServiceTests
         Assert.That(this.queue.PendingCount, Is.EqualTo(0));
     }
 
+    /// <summary>
+    /// With a failing database the generic upsert stops early, and the flush logs one summary warning with the first
+    /// exception, keeping every hit pending.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Failing_Database_Logs_One_Warning_And_Keeps_All_Hits()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        var options = new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>().UseSqlite(connection).Options;
+        this.factory.Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new PageNotFoundTrackerDbContext(options));
+        var upsertLogger = new CapturingLogger<DefaultTrackedUrlUpsert>();
+        var flushLogger = new CapturingLogger<TrackingFlushService>();
+        this.state.SetAvailable();
+        this.service = this.CreateService(useDefaultUpsert: true, flushLogger: flushLogger, upsertLogger: upsertLogger);
+        for (int i = 0; i < 20; i++)
+        {
+            this.queue.TryEnqueue(Hit("/" + i));
+        }
+
+        await this.service.FlushAsync(CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(flushLogger.Warnings, Has.Count.EqualTo(1));
+            Assert.That(flushLogger.WarningExceptions[0], Is.Not.Null);
+            Assert.That(upsertLogger.Warnings, Is.Empty);
+            Assert.That(upsertLogger.Debugs.Count(m => m.Contains("could not be written", StringComparison.Ordinal)), Is.LessThanOrEqualTo(DefaultTrackedUrlUpsert.MaxConsecutiveFailures));
+            Assert.That(this.queue.PendingCount, Is.EqualTo(20));
+        });
+    }
+
+    /// <summary>
+    /// A cancelled upsert that returns the hits it did not write gets only those restored, without a warning.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Cancelled_Upsert_Restores_Only_Returned_Hits()
+    {
+        var flushLogger = new CapturingLogger<TrackingFlushService>();
+        this.state.SetAvailable();
+        this.service = this.CreateService(flushLogger: flushLogger);
+        using var cts = new CancellationTokenSource();
+        this.upsert.CancelAndReturnUrlNext = ("/b", cts);
+        this.queue.TryEnqueue(Hit("/a"));
+        this.queue.TryEnqueue(Hit("/b"));
+
+        await this.service.FlushAsync(cts.Token);
+
+        Assert.That(this.queue.PendingCount, Is.EqualTo(1));
+        Assert.That(this.queue.TakeBatch().Single().Url, Is.EqualTo("/b"));
+        Assert.That(flushLogger.Warnings, Is.Empty);
+    }
+
+    /// <summary>
+    /// When the final flush at shutdown cannot run (its token is already cancelled), the hits that are lost are logged
+    /// as a warning with their count.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task StopAsync_Warns_About_Hits_Lost_When_Final_Flush_Is_Cancelled()
+    {
+        var flushLogger = new CapturingLogger<TrackingFlushService>();
+        this.state.SetAvailable();
+        var flushService = this.CreateService(flushLogger: flushLogger);
+        await flushService.StartAsync(CancellationToken.None);
+        this.queue.TryEnqueue(Hit("/a"));
+        this.queue.TryEnqueue(Hit("/b"));
+
+        await flushService.StopAsync(new CancellationToken(true));
+        flushService.Dispose();
+
+        Assert.That(this.upsert.Calls, Is.Empty);
+        Assert.That(flushLogger.Warnings, Has.Count.EqualTo(1));
+        Assert.That(flushLogger.Warnings[0], Does.Contain("2"));
+    }
+
+    /// <summary>
+    /// A final flush that writes everything logs no loss.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task StopAsync_Logs_No_Loss_When_Final_Flush_Writes_Everything()
+    {
+        var flushLogger = new CapturingLogger<TrackingFlushService>();
+        this.state.SetAvailable();
+        var flushService = this.CreateService(flushLogger: flushLogger);
+        await flushService.StartAsync(CancellationToken.None);
+        this.queue.TryEnqueue(Hit("/a"));
+
+        await flushService.StopAsync(CancellationToken.None);
+        flushService.Dispose();
+
+        Assert.That(this.upsert.Calls, Has.Count.EqualTo(1));
+        Assert.That(flushLogger.Warnings, Is.Empty);
+    }
+
     private static TrackedUrlHit Hit(string url) =>
         new(url, "hash" + url, url, url, string.Empty, string.Empty, false, 1, T0, T0);
 
-    private TrackingFlushService CreateService(PageNotFoundTrackerSettings? settings = null)
+    private TrackingFlushService CreateService(
+        PageNotFoundTrackerSettings? settings = null,
+        bool useDefaultUpsert = false,
+        CapturingLogger<TrackingFlushService>? flushLogger = null,
+        CapturingLogger<DefaultTrackedUrlUpsert>? upsertLogger = null)
     {
         var connectionStrings = new Mock<IOptionsMonitor<ConnectionStrings>>();
         connectionStrings.Setup(m => m.CurrentValue).Returns(new ConnectionStrings { ProviderName = ProviderName });
@@ -271,16 +376,16 @@ internal sealed class TrackingFlushServiceTests
         return new TrackingFlushService(
             this.queue,
             this.state,
-            new TrackingDatabaseProviderSelector([new FakeProvider(ProviderName, this.upsert)]),
+            new TrackingDatabaseProviderSelector([new FakeProvider(ProviderName, useDefaultUpsert ? null : this.upsert)]),
             connectionStrings.Object,
             serviceProvider,
-            new DefaultTrackedUrlUpsert(NullLogger<DefaultTrackedUrlUpsert>.Instance),
+            new DefaultTrackedUrlUpsert(upsertLogger ?? (ILogger<DefaultTrackedUrlUpsert>)NullLogger<DefaultTrackedUrlUpsert>.Instance),
             Options.Create(settings ?? new PageNotFoundTrackerSettings()),
             this.time,
-            NullLogger<TrackingFlushService>.Instance);
+            flushLogger ?? (ILogger<TrackingFlushService>)NullLogger<TrackingFlushService>.Instance);
     }
 
-    private sealed class FakeProvider(string providerName, ITrackedUrlUpsert upsert) : ITrackingDatabaseProvider
+    private sealed class FakeProvider(string providerName, ITrackedUrlUpsert? upsert) : ITrackingDatabaseProvider
     {
         public string ProviderName { get; } = providerName;
 
@@ -299,6 +404,8 @@ internal sealed class TrackingFlushServiceTests
         public bool FailNext { get; set; }
 
         public bool CancelNext { get; set; }
+
+        public (string Url, CancellationTokenSource Source)? CancelAndReturnUrlNext { get; set; }
 
         public IReadOnlyList<TrackedUrlHit[]> Calls
         {
@@ -324,6 +431,13 @@ internal sealed class TrackingFlushServiceTests
             {
                 this.FailNext = false;
                 throw new InvalidOperationException("Database down.");
+            }
+
+            if (this.CancelAndReturnUrlNext is { } cancel)
+            {
+                this.CancelAndReturnUrlNext = null;
+                cancel.Source.Cancel();
+                return Task.FromResult<IReadOnlyCollection<TrackedUrlHit>>([.. hits.Where(h => h.Url == cancel.Url)]);
             }
 
             if (this.CancelNext)

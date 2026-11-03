@@ -68,6 +68,21 @@ internal sealed class TrackingQueue
     }
 
     /// <summary>
+    /// Gets the number of queued entries that are not written yet: the pending identities, an uncompleted in-flight
+    /// batch and the hits still in the channel (not merged, so one identity can count more than once there).
+    /// </summary>
+    public int Count
+    {
+        get
+        {
+            lock (this.gate)
+            {
+                return this.pending.Count + this.inFlight.Length + this.channel.Reader.Count;
+            }
+        }
+    }
+
+    /// <summary>
     /// Adds a hit to the channel without blocking.
     /// </summary>
     /// <param name="hit">The hit.</param>

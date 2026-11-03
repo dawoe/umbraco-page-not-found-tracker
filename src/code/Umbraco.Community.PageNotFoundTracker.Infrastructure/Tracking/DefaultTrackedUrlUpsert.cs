@@ -10,11 +10,19 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 /// The generic EF Core upsert, used when the database provider has no provider specific one. Per hit it updates the
 /// existing row, inserts when there is none, and updates once more when another server inserted the row in between.
 /// No surrounding transaction: each statement is atomic on its own, and each hit succeeds or fails on its own, so a
-/// failed hit is returned without the written ones being sent again.
+/// failed hit is returned without the written ones being sent again. Per-hit failures are logged at debug only (the
+/// flush logs one summary warning); after <see cref="MaxConsecutiveFailures"/> failures in a row the database is
+/// treated as down and the rest of the batch is returned unattempted. Cancellation does not throw: the current and
+/// the unattempted hits are returned.
 /// </summary>
 /// <param name="logger">The logger.</param>
 internal sealed class DefaultTrackedUrlUpsert(ILogger<DefaultTrackedUrlUpsert> logger) : ITrackedUrlUpsert
 {
+    /// <summary>
+    /// The number of consecutive failed hits after which the rest of the batch is not attempted.
+    /// </summary>
+    internal const int MaxConsecutiveFailures = 3;
+
     /// <inheritdoc />
     public async Task<IReadOnlyCollection<TrackedUrlHit>> UpsertAsync(DbContext dbContext, IReadOnlyCollection<TrackedUrlHit> hits, CancellationToken cancellationToken)
     {
@@ -22,25 +30,54 @@ internal sealed class DefaultTrackedUrlUpsert(ILogger<DefaultTrackedUrlUpsert> l
         ArgumentNullException.ThrowIfNull(hits);
 
         DbSet<TrackedUrl> set = dbContext.Set<TrackedUrl>();
-        List<TrackedUrlHit> failed = [];
-        foreach (TrackedUrlHit hit in hits)
+        var failed = new FailedTrackedUrlHits();
+        TrackedUrlHit[] all = [.. hits];
+        int consecutiveFailures = 0;
+        for (int index = 0; index < all.Length; index++)
         {
+            TrackedUrlHit hit = all[index];
+            if (cancellationToken.IsCancellationRequested)
+            {
+                AddRemaining(failed, all, index);
+                return failed;
+            }
+
             try
             {
                 await UpsertHitAsync(dbContext, set, hit, cancellationToken);
+                consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                throw;
+                // The current hit counts as not written; the hits before it are written and are not returned.
+                AddRemaining(failed, all, index);
+                return failed;
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Writing the tracked 404 URL {Url} failed; it stays pending for the next flush.", hit.Url);
-                failed.Add(hit);
+                logger.LogDebug(ex, "The tracked 404 URL {Url} could not be written; it stays pending for the next flush.", hit.Url);
+                failed.Add(hit, ex);
+                if (++consecutiveFailures >= MaxConsecutiveFailures && index + 1 < all.Length)
+                {
+                    logger.LogDebug(
+                        "Stopped writing tracked 404 URLs after {Failures} consecutive failures; {Remaining} were not attempted.",
+                        consecutiveFailures,
+                        all.Length - index - 1);
+                    AddRemaining(failed, all, index + 1);
+                    return failed;
+                }
             }
         }
 
         return failed;
+    }
+
+    private static void AddRemaining(FailedTrackedUrlHits failed, TrackedUrlHit[] all, int start)
+    {
+        for (int i = start; i < all.Length; i++)
+        {
+            failed.Add(all[i]);
+        }
     }
 
     private static async Task UpsertHitAsync(DbContext dbContext, DbSet<TrackedUrl> set, TrackedUrlHit hit, CancellationToken cancellationToken)

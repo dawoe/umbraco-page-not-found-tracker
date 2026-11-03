@@ -19,7 +19,10 @@ public interface ITrackedUrlUpsert
     /// <returns>
     /// The hits that were not written (empty when all were). The caller keeps them pending for the next flush; the
     /// written hits are not sent again. An implementation that throws is treated as having written none of the batch,
-    /// so an implementation that writes in batches must be all-or-nothing when it throws.
+    /// so an implementation that writes in batches must be all-or-nothing when it throws. For the same reason an
+    /// implementation should not throw when <paramref name="cancellationToken"/> is cancelled part way through: it
+    /// should stop and return the hits it did not write (the current one and the ones not attempted yet), so the hits
+    /// already written are not counted twice.
     /// </returns>
     Task<IReadOnlyCollection<TrackedUrlHit>> UpsertAsync(DbContext dbContext, IReadOnlyCollection<TrackedUrlHit> hits, CancellationToken cancellationToken);
 }
