@@ -74,6 +74,7 @@ internal static class UmbracoBuilderExtensions
             },
             shareUmbracoConnection: true);
 
+        services.AddHostedService<TrackingMigrationService>();
         services.AddSingleton<TrackingFlushService>();
         services.AddHostedService(sp => sp.GetRequiredService<TrackingFlushService>());
         services.AddSingleton<ITrackingFlusher>(sp => sp.GetRequiredService<TrackingFlushService>());
