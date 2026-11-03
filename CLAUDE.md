@@ -442,24 +442,30 @@ a change needs a restart):
 **Flow.** Both 404 call points (spec 2) call `INotFoundRecorder`; `NotFoundTracker` (internal, `TryAddSingleton`)
 normalises the occurrence with `TrackedUrlNormalizer` and writes it to `TrackingQueue` without awaiting and without
 throwing. It does nothing when tracking is off or the persistence state is `Unavailable`. `TrackingQueue` is a bounded
-channel: when full the new hit is dropped, with at most one warning per minute stating the number dropped. The hosted
+channel: when full the new hit is dropped, with at most one warning per minute stating the number dropped (the drop
+counter is interlocked and the warning time a compare-and-swap, so request threads never take the queue lock). The hosted
 `TrackingFlushService` (also `ITrackingFlusher`, which integration tests use to force a flush) waits for the startup
 gate, then every `FlushInterval` drains the channel into a pending buffer merged per identity (count summed, earliest
 `FirstSeen`, latest `LastSeen`, first-seen `DisplayUrl` and `IsFile`) and writes it. Hits not written stay pending for
 the next flush; when they bring the pending buffer past `ChannelCapacity` identities, the entries with the oldest
 `LastSeen` are dropped (with a warning). Pending buffer, retry and in-flight batch share one lock (a later discard can take it). `StopAsync` flushes
-once more within the host's shutdown time. No database write happens in the request pipeline.
+once more within the host's shutdown time; whatever is still queued after it (cancelled or timed out at the shutdown
+deadline, or a failed write) is lost and logged as one warning with the count. No database write happens in the request pipeline.
 
-**Identity** = `UrlHash` + `Domain` + `Culture` (unique index). `Url` is the decoded path, lower-cased (invariant),
+**Identity** = `UrlHash` + `Domain` + `Culture` (unique index). `Url` is the path as the call point passes it, already
+decoded by Kestrel (everything but `%2F`; the finder branch without an `HttpContext` decodes `Uri.AbsolutePath` the same
+way with `PathString.FromUriComponent`). The normaliser does **not** decode again (that merged `/a%2541` with `/aA`). It is
+lower-cased (invariant),
 repeated and trailing slashes removed, with the full alias prefix (`/sitea/...`); with `IncludeQueryString` the query
 is appended lower-cased but **not** percent-decoded. `UrlHash` is the SHA-256 (hex) of the full `Url` before
 truncation, so long URLs stay distinct. `DisplayUrl` is the first-seen spelling (without the query when
 `IncludeQueryString` is off). `RelativePath` is `Url`'s path with the domain's own path removed (indexed, not unique).
 `Domain` is the matched domain name lower-cased, `Culture` as Umbraco returns it; both are an empty string (never null)
-without a match. Truncation: `Url`/`DisplayUrl` 2000, `RelativePath` 800, `Domain` 255 (`Culture` column 50).
+without a match. Truncation: `Url`/`DisplayUrl` 2000, `RelativePath` 800, `Domain` 255, `Culture` 50.
 
 **Data model.** Table `pageNotFoundTrackerUrl` (`TrackingConstants.TableName`, entity `TrackedUrl` in Core):
-`Id`, `Url`, `UrlHash`, `RelativePath`, `DisplayUrl`, `Domain`, `Culture`, `IsFile`, `HitCount`, `FirstSeen`,
+`Id`, `Url`, `UrlHash`, `RelativePath`, `DisplayUrl`, `Domain`, `Culture`, `IsFile`, `HitCount` (`long`, `bigint` on
+SQL Server; `TrackedUrlHit.Count` is `long` too, so merged counts cannot overflow), `FirstSeen`,
 `LastSeen` (UTC `DateTime`, never `DateTimeOffset`). EF Core history table `__pageNotFoundTrackerMigrations`
 (`TrackingConstants.MigrationsHistoryTable`, schema `dbo` on SQL Server). `PageNotFoundTrackerDbContext`
 (Infrastructure, public so provider projects can hold its migrations) is registered with `AddUmbracoDbContext<T>`
@@ -468,13 +474,22 @@ without a match. Truncation: `Url`/`DisplayUrl` 2000, `RelativePath` 800, `Domai
 **Startup gate.** `TrackingMigrationService` waits for `RuntimeLevel.Run` (so after Umbraco's own unattended
 install), selects the provider for Umbraco's provider name and runs `Database.MigrateAsync`. `ITrackingPersistenceState`
 (Core, public) reports `Pending` / `Available` / `Unavailable`, with `WaitUntilReadyAsync` for later specs. No matching
-provider: one error log naming the provider, `Unavailable`, the site keeps serving. A failed migration: error log,
-`Unavailable` (no retry in that run). Hits arriving while `Pending` are queued and flushed once the gate opens.
+provider: one log naming the provider (error, or warning when `TrackingEnabled` is off since nothing is lost),
+`Unavailable`, the site keeps serving. A failed migration: error log, `Unavailable` (no retry in that run). Hits
+arriving while `Pending` are queued and flushed once the gate opens; when the state becomes `Unavailable` the queue
+(channel, pending buffer, in-flight batch) is cleared, and `NotFoundTracker` clears it again if the state turned
+`Unavailable` while it enqueued.
 
 **Upsert.** `DefaultTrackedUrlUpsert` (shared EF Core, every provider): per hit an `ExecuteUpdate` (`HitCount +=
 n`, `LastSeen = max`), then an insert when no row matched; on a unique violation (another server inserted) the update
-is retried once. `ITrackedUrlUpsert.UpsertAsync` returns the hits it did not write; only those stay pending. An
-implementation that throws counts as having written nothing, so a batching override must be all-or-nothing.
+is retried once. Per-hit failures are logged at debug; after 3 consecutive failures (`MaxConsecutiveFailures`) the
+database counts as down and the rest of the batch is returned unattempted, so a dead or slow database cannot stall a
+flush. The returned `FailedTrackedUrlHits` carries the first exception, and the flush logs one summary warning per
+failed flush with it attached. On cancellation it does not throw: it returns the current and the unattempted hits.
+`ITrackedUrlUpsert.UpsertAsync` returns the hits it did not write; only those stay pending, so written hits are never
+counted twice (also when a flush is cancelled mid-batch). An implementation that throws counts as having written
+nothing, so a batching override must be all-or-nothing, and should return its unwritten hits on cancellation rather
+than throw.
 
 **Providers.** `ITrackingDatabaseProvider` (Core): `ProviderName` (Umbraco's `umbracoDbDSN_ProviderName`, e.g.
 `Microsoft.Data.Sqlite`, `Microsoft.Data.SqlClient`), `ConfigureDbContext(options, connectionString)` (provider,

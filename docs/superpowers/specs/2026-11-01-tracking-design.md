@@ -293,6 +293,10 @@ These are the writer's calls, not decisions the user made:
   derive the path relative to the domain from these two.
 - Normalisation: the percent-encoded form is decoded before comparing, then compared
   ignoring case (invariant culture) with a trailing slash and repeated slashes ignored.
+  (Final review, 2026-11-03: the decoding happens at the call point, by Kestrel, which decodes
+  everything but `%2F`; the one call point without an `HttpContext` decodes the URI path the
+  same way. The normaliser itself no longer decodes, because decoding twice merged `/a%2541`
+  with `/aA`.)
 - Culture is stored as the code Umbraco returns for the domain, compared ignoring case. No
   culture and no domain are stored as an empty string, never null, so the unique index
   behaves the same on SQLite and SQL Server.
@@ -353,7 +357,23 @@ These are the writer's calls, not decisions the user made:
   - `ITrackedUrlUpsert.UpsertAsync` returns the hits it did not write (the default writes per identity, so one bad
     row does not fail the batch); only those go back to the pending buffer, so written hits are never counted twice.
     An implementation that throws counts as having written nothing, so a batching override must be all-or-nothing.
-  - With `IncludeQueryString` on, the query string is lower-cased but not percent-decoded (the path is decoded).
+  - Final review fixes (2026-11-03):
+    - The default upsert logs per-hit failures at debug and stops after 3 consecutive failures, returning the failed
+      and the unattempted hits; the flush logs one summary warning per failed flush with the first exception. A dead
+      or slow database cannot stall a flush hit by hit.
+    - On cancellation the default upsert returns the current and the unattempted hits instead of throwing, so a
+      flush cancelled mid-batch (shutdown) restores only unwritten hits and nothing is counted twice. Implementations
+      should do the same. Hits still queued after the final flush at shutdown are lost; that is logged as a warning
+      with the count.
+    - `HitCount` (and the per-identity count in memory) is a 64-bit value.
+    - `Culture` is truncated to its 50 character column.
+    - An unknown provider is logged as a warning instead of an error when `TrackingEnabled` is off (nothing is lost).
+    - When the persistence becomes unavailable, the queued hits (channel, pending buffer, in-flight batch) are
+      discarded, so hits queued while pending do not stay in memory.
+    - Dropping a hit on a full channel is lock free (interlocked counter, compare-and-swap on the warning time).
+    - Deferred: migration retry with backoff, chunked transactions.
+  - With `IncludeQueryString` on, the query string is lower-cased but not percent-decoded (the path arrives decoded
+    from the call point; the normaliser does not decode).
     Parameter order is not normalised.
   - The provider composers (`SqlitePersistenceComposer`, `SqlServerPersistenceComposer`) are public so an
     implementer can `[ComposeAfter]` them to replace a built-in provider for the same name.
