@@ -210,10 +210,17 @@ variables in `dotnet run`, so override the connection string with a command-line
 precedence) rather than `$env:`:
 
 ```powershell
-sqllocaldb create pnft-test; sqllocaldb start pnft-test
+sqllocaldb versions                      # pick a version Microsoft.Data.SqlClient can start (see below)
+sqllocaldb create pnft-test 15.0 -s      # -s also starts it
 dotnet run --launch-profile sql-server -- "--ConnectionStrings:umbracoDbDSN=Server=(localdb)\pnft-test;Database=PageNotFoundTracker;Integrated Security=True;TrustServerCertificate=True"
 # afterwards: sqlcmd -S "(localdb)\pnft-test" -Q "ALTER DATABASE [PageNotFoundTracker] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [PageNotFoundTracker]"
 ```
+
+Pin the LocalDB version. Without it `sqllocaldb create` uses the newest installed version. On a machine with
+LocalDB 2019 (15.0) and 2025 (17.0) installed, an instance created with 17.0 accepted `sqlcmd` connections, but the site
+(`Microsoft.Data.SqlClient`) failed on start with "error: 50 - Local Database Runtime error occurred ... SQL Server
+process failed to start". Recreating the instance with `15.0` fixed it. `sqllocaldb info pnft-test` shows an existing
+instance's version. The same applies to the instance used for `PNFT_SQLSERVER_CONNECTION` (see Tracking).
 
 Use a named instance, not the shared `MSSQLLocalDB` or a full local SQL Server. Running the profile still rewrites
 `appsettings.json` (HMAC key): restore it with `git checkout`.
@@ -537,7 +544,7 @@ ignored with a message. The value is a **server-level** connection string (no `D
 drops a `pnft_test_<guid>` database. Docker (see SQL Server profile setup):
 `Server=localhost,14330;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`. LocalDB:
 `Server=(localdb)\<instance>;Integrated Security=True;TrustServerCertificate=True` (a named instance, not
-`MSSQLLocalDB`). CI uses a `mssql` service container on port 1433 and also sets `PNFT_REQUIRE_SQLSERVER=true`:
+`MSSQLLocalDB`, created with a pinned version such as `sqllocaldb create pnft-test 15.0 -s`; see SQL Server profile setup). CI uses a `mssql` service container on port 1433 and also sets `PNFT_REQUIRE_SQLSERVER=true`:
 with that switch a missing `PNFT_SQLSERVER_CONNECTION` fails the SQL Server cases instead of ignoring them, so a broken
 CI configuration cannot pass with SQL Server coverage silently skipped. Leave it unset locally. Umbraco itself boots only on SQLite in the tests
 (`TrackingEndToEndTests`: a 404 request plus a forced flush gives a row); the full site on SQL Server is the
