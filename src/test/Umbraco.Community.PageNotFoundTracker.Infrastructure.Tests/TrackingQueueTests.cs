@@ -69,12 +69,14 @@ internal sealed class TrackingQueueTests
         Assert.That(queue.TryEnqueue(Hit("/3", "3", T0)), Is.False);
         Assert.That(queue.TryEnqueue(Hit("/4", "4", T0)), Is.False);
         Assert.That(logger.Warnings, Has.Count.EqualTo(1));
+        Assert.That(logger.Warnings[0], Does.Contain("dropped 1 hits since the last warning"));
 
         time.Advance(TimeSpan.FromMinutes(1));
         Assert.That(queue.TryEnqueue(Hit("/5", "5", T0)), Is.False);
 
+        // The capacity is also 2, so assert on the dropped-count wording, not on the digit alone.
         Assert.That(logger.Warnings, Has.Count.EqualTo(2));
-        Assert.That(logger.Warnings[1], Does.Contain("2"));
+        Assert.That(logger.Warnings[1], Does.Contain("dropped 2 hits since the last warning"));
     }
 
     /// <summary>

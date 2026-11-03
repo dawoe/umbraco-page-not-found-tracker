@@ -38,11 +38,43 @@ internal static class UmbracoBuilderExtensions
         builder.Services.AddSingleton<TrackingPersistenceState>();
         builder.Services.AddSingleton<ITrackingPersistenceState>(sp => sp.GetRequiredService<TrackingPersistenceState>());
         builder.Services.TryAddSingleton<INotFoundRecorder, NotFoundTracker>();
+        AddTrackingPersistence(builder.Services);
 
         // Replaces Umbraco's ContentFinderByConfigured404 as the last-chance finder. Ours asks the resolver first and
         // delegates to Umbraco's finder when nothing resolves, so the built-in behaviour is kept, not removed.
         builder.SetContentLastChanceFinder<PageNotFoundLastChanceFinder>();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Registers the tracking database context, the provider selection and the flush service.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    private static void AddTrackingPersistence(IServiceCollection services)
+    {
+        // Database providers are registered with Add (not TryAdd), so several can exist; the selector picks the last
+        // registered one for Umbraco's provider name.
+        services.AddSingleton<TrackingDatabaseProviderSelector>();
+
+        // The options action runs when the pooled factory is first resolved, which only the flush does, after the
+        // gate opened. With no matching provider the options stay unconfigured.
+        services.AddUmbracoDbContext<PageNotFoundTrackerDbContext>(
+            (options, connectionString, providerName, serviceProvider) =>
+            {
+                if (serviceProvider is null || string.IsNullOrEmpty(connectionString))
+                {
+                    return;
+                }
+
+                serviceProvider.GetRequiredService<TrackingDatabaseProviderSelector>()
+                    .Select(providerName)?
+                    .ConfigureDbContext(options, connectionString);
+            },
+            shareUmbracoConnection: true);
+
+        services.AddSingleton<TrackingFlushService>();
+        services.AddHostedService(sp => sp.GetRequiredService<TrackingFlushService>());
+        services.AddSingleton<ITrackingFlusher>(sp => sp.GetRequiredService<TrackingFlushService>());
     }
 }
