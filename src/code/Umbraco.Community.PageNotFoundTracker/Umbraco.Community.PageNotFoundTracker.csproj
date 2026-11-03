@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <PackageReference Include="Umbraco.Cms.Api.Management" />
+    <PackageReference Include="Umbraco.Cms.Persistence.EFCore" />
   </ItemGroup>
 
   <ItemGroup>

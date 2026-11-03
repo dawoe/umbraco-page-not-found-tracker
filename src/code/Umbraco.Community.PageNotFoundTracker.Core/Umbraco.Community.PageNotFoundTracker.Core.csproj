@@ -4,4 +4,19 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- DbContext and DbContextOptionsBuilder appear in the provider contracts. -->
+    <PackageReference Include="Umbraco.Cms.Persistence.EFCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Core settings helpers are internal; the infrastructure project and its unit tests use them. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Umbraco.Community.PageNotFoundTracker.Infrastructure</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

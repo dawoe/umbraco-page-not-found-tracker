@@ -9,6 +9,9 @@
     <PackageVersion Include="Umbraco.Cms.Core" Version="[17.8.0,18.0.0)" />
     <PackageVersion Include="Umbraco.Cms.Api.Management" Version="[17.8.0,18.0.0)" />
     <PackageVersion Include="Umbraco.Cms.Tests.Integration" Version="[17.8.0,18.0.0)" />
+    <PackageVersion Include="Umbraco.Cms.Persistence.EFCore" Version="[17.8.0,18.0.0)" />
+    <!-- Keep in step with the EF Core version Umbraco.Cms.Persistence.EFCore resolves (see packages.lock.json). -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,5 +26,6 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="coverlet.msbuild" Version="6.0.4" />
     <PackageVersion Include="Moq" Version="4.21.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
   </ItemGroup>
 </Project>
