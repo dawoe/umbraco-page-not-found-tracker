@@ -3,12 +3,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Umbraco.Cms.Core.DependencyInjection;
+using Umbraco.Cms.Core.Notifications;
 using Umbraco.Community.PageNotFoundTracker.Core;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Core.Dashboard;
 using Umbraco.Community.PageNotFoundTracker.Core.NotFound;
 using Umbraco.Community.PageNotFoundTracker.Core.Redirects;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Blocking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Dashboard;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Redirects;
@@ -54,12 +56,26 @@ internal static class UmbracoBuilderExtensions
         builder.Services.AddSingleton<ITrackingPersistenceState>(sp => sp.GetRequiredService<TrackingPersistenceState>());
         builder.Services.AddUnique<INotFoundRecorder, NotFoundTracker>();
         AddTrackingPersistence(builder.Services);
+        AddBlocking(builder);
 
         // Replaces Umbraco's ContentFinderByConfigured404 as the last-chance finder. Ours asks the resolver first and
         // delegates to Umbraco's finder when nothing resolves, so the built-in behaviour is kept, not removed.
         builder.SetContentLastChanceFinder<PageNotFoundLastChanceFinder>();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Registers the block snapshot provider, its startup load and the handlers that rebuild it when Umbraco's domains
+    /// or languages change.
+    /// </summary>
+    /// <param name="builder">The Umbraco builder.</param>
+    private static void AddBlocking(IUmbracoBuilder builder)
+    {
+        builder.Services.AddUnique<IBlockSnapshotProvider, BlockSnapshotProvider>();
+        builder.Services.AddHostedService<BlockSnapshotService>();
+        builder.AddNotificationAsyncHandler<DomainCacheRefresherNotification, BlockSnapshotInvalidationHandler>();
+        builder.AddNotificationAsyncHandler<LanguageCacheRefresherNotification, BlockSnapshotInvalidationHandler>();
     }
 
     /// <summary>
