@@ -18,6 +18,16 @@ import {
 } from './tracked-url-table.columns.js';
 
 /**
+ * Cell styles are inline on purpose: `umb-table` renders the cell templates inside its own shadow root, so rules in
+ * this element's `static styles` never reach them (the type icon and label stacked instead of centring).
+ */
+const CELL_STYLES = {
+  url: 'word-break: break-all;',
+  none: 'color: var(--uui-color-text-alt);',
+  type: 'display: inline-flex; align-items: center; gap: var(--uui-size-space-2);',
+} as const;
+
+/**
  * The table view of the tracked URL collection. Built on the framework's collection view base (items,
  * selection, item actions setting) and `umb-table` (header sorting UI, rows). Each row is an entity of
  * `PNFT_TRACKED_URL_ENTITY_TYPE` with its own entity context, and the last column is the framework's entity
@@ -97,7 +107,7 @@ export class PnftTrackedUrlTableElement extends UmbCollectionViewElementBase<Pnf
       id: item.unique,
       entityType: item.entityType,
       data: [
-        { columnAlias: 'url', value: html`<span class="url" title=${item.url}>${item.url}</span>` },
+        { columnAlias: 'url', value: html`<span class="url" style=${CELL_STYLES.url} title=${item.url}>${item.url}</span>` },
         { columnAlias: 'domain', value: item.domain || this.#renderNone('pageNotFoundTracker_noDomain') },
         { columnAlias: 'culture', value: item.culture || this.#renderNone('pageNotFoundTracker_noCulture') },
         { columnAlias: 'type', value: this.#renderType(item.isFile) },
@@ -119,13 +129,13 @@ export class PnftTrackedUrlTableElement extends UmbCollectionViewElementBase<Pnf
   }
 
   #renderNone(key: string) {
-    return html`<em class="none">${this.localize.term(key)}</em>`;
+    return html`<em class="none" style=${CELL_STYLES.none}>${this.localize.term(key)}</em>`;
   }
 
   #renderType(isFile: boolean) {
     const label = this.localize.term(isFile ? 'pageNotFoundTracker_typeFile' : 'pageNotFoundTracker_typePage');
 
-    return html`<span class="type"><umb-icon name=${isFile ? 'icon-document' : 'icon-globe'}></umb-icon>${label}</span>`;
+    return html`<span class="type" style=${CELL_STYLES.type}><umb-icon name=${isFile ? 'icon-document' : 'icon-globe'}></umb-icon>${label}</span>`;
   }
 
   /** Marks each row for tests and gives it an entity context (entity type and unique) for its entity actions. */
@@ -197,19 +207,6 @@ export class PnftTrackedUrlTableElement extends UmbCollectionViewElementBase<Pnf
         flex-direction: column;
       }
 
-      .url {
-        word-break: break-all;
-      }
-
-      .none {
-        color: var(--uui-color-text-alt);
-      }
-
-      .type {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--uui-size-space-2);
-      }
     `,
   ];
 }
