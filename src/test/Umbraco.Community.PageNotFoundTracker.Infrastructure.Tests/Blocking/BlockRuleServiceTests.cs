@@ -1,7 +1,9 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -265,7 +267,7 @@ internal sealed class BlockRuleServiceTests
         {
             Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Saved));
             Assert.That(outcome.RecordsRemoved, Is.False);
-            Assert.That(outcome.Message, Is.EqualTo(BlockRuleService.RecordsNotRemovedMessage));
+            Assert.That(outcome.Message, Is.EqualTo(BlockingConstants.RecordsNotRemovedMessage));
             Assert.That(await this.RulesAsync(), Has.Count.EqualTo(1));
             Assert.That(this.calls, Is.EqualTo(new[] { "refresh", "notify:Saved", "exclusive" }));
         });
@@ -349,6 +351,54 @@ internal sealed class BlockRuleServiceTests
     }
 
     /// <summary>
+    /// A request that is cancelled after the rule is committed still refreshes, notifies and removes the covered records:
+    /// the post-save steps must not depend on the request token.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Create_cancelled_after_the_save_still_refreshes_notifies_and_removes_records()
+    {
+        await this.AddTrackedAsync("/old");
+        using var cts = new CancellationTokenSource();
+        BlockRuleService cancelling = this.BuildServiceCancellingAfterWrite(cts, cancelAfterSave: true);
+
+        CreateBlockRuleOutcome outcome = await cancelling.CreateAsync("/old", 410, string.Empty, string.Empty, cts.Token);
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(cts.IsCancellationRequested, Is.True, "The test must have cancelled the request after the save.");
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Saved));
+            Assert.That(outcome.RecordsRemoved, Is.True);
+            Assert.That(this.calls, Is.EqualTo(new[] { "refresh", "notify:Saved", "exclusive" }));
+            Assert.That(await this.TrackedAsync(), Is.Empty);
+        });
+    }
+
+    /// <summary>
+    /// A request that is cancelled after the rule is deleted still refreshes and notifies the removal.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Delete_cancelled_after_the_delete_still_refreshes_and_notifies()
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, string.Empty, CancellationToken.None);
+        int id = (await this.RulesAsync()).Single().Id;
+        this.calls.Clear();
+        using var cts = new CancellationTokenSource();
+        BlockRuleService cancelling = this.BuildServiceCancellingAfterWrite(cts, cancelAfterSave: false);
+
+        bool deleted = await cancelling.DeleteAsync(id, cts.Token);
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(cts.IsCancellationRequested, Is.True, "The test must have cancelled the request after the delete.");
+            Assert.That(deleted, Is.True);
+            Assert.That(await this.RulesAsync(), Is.Empty);
+            Assert.That(this.calls, Is.EqualTo(new[] { "refresh", "notify:Removed" }));
+        });
+    }
+
+    /// <summary>
     /// The scope options list the domain names lower-cased, distinct and sorted (wildcard domains excluded), and the
     /// language ISO codes.
     /// </summary>
@@ -371,6 +421,53 @@ internal sealed class BlockRuleServiceTests
             Assert.That(options.Domains, Is.EqualTo(new[] { "www.a.local:44402/sitea", "www.b.local" }));
             Assert.That(options.Cultures, Is.EqualTo(new[] { "en-US", "nl-NL" }));
         });
+    }
+
+    /// <summary>
+    /// Builds a service whose collaborators throw when given a cancelled token (like the real ones) and whose database
+    /// cancels <paramref name="cts"/> right after the rule write (insert, or delete of a rule) committed.
+    /// </summary>
+    private BlockRuleService BuildServiceCancellingAfterWrite(CancellationTokenSource cts, bool cancelAfterSave)
+    {
+        this.snapshotProvider.Setup(p => p.RefreshAsync(It.IsAny<CancellationToken>()))
+            .Returns((CancellationToken t) =>
+            {
+                t.ThrowIfCancellationRequested();
+                this.calls.Add("refresh");
+                return Task.FromResult(true);
+            });
+        this.notifier.Setup(n => n.NotifyAsync(It.IsAny<BlockRuleCachePayload>(), It.IsAny<CancellationToken>()))
+            .Returns((BlockRuleCachePayload p, CancellationToken t) =>
+            {
+                t.ThrowIfCancellationRequested();
+                this.calls.Add("notify:" + p.Change);
+                return Task.CompletedTask;
+            });
+        this.flusher.Setup(f => f.RunExclusiveAsync(It.IsAny<Func<Task>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<Task> action, CancellationToken t) =>
+            {
+                t.ThrowIfCancellationRequested();
+                this.calls.Add("exclusive");
+                return action();
+            });
+
+        DbContextOptions<PageNotFoundTrackerDbContext> cancelling = new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>()
+            .UseSqlite(this.connection)
+            .AddInterceptors(cancelAfterSave ? new CancelAfterSaveInterceptor(cts) : new CancelAfterRuleDeleteInterceptor(cts))
+            .Options;
+        IServiceProvider serviceProvider = new ServiceCollection()
+            .AddSingleton<IDbContextFactory<PageNotFoundTrackerDbContext>>(new TestContextFactory(cancelling))
+            .BuildServiceProvider();
+        return new BlockRuleService(
+            serviceProvider,
+            this.queue,
+            this.flusher.Object,
+            this.snapshotProvider.Object,
+            this.notifier.Object,
+            this.domainService.Object,
+            this.languageService.Object,
+            new FakeTimeProvider(new DateTimeOffset(T0)),
+            NullLogger<BlockRuleService>.Instance);
     }
 
     private static IDomain Domain(string name) => Mock.Of<IDomain>(d => d.DomainName == name);
@@ -413,5 +510,27 @@ internal sealed class BlockRuleServiceTests
     private sealed class TestContextFactory(DbContextOptions<PageNotFoundTrackerDbContext> options) : IDbContextFactory<PageNotFoundTrackerDbContext>
     {
         public PageNotFoundTrackerDbContext CreateDbContext() => new(options);
+    }
+
+    private sealed class CancelAfterSaveInterceptor(CancellationTokenSource cts) : SaveChangesInterceptor
+    {
+        public override ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
+        {
+            cts.Cancel();
+            return base.SavedChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class CancelAfterRuleDeleteInterceptor(CancellationTokenSource cts) : DbCommandInterceptor
+    {
+        public override ValueTask<int> NonQueryExecutedAsync(DbCommand command, CommandExecutedEventData eventData, int result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.StartsWith("DELETE", StringComparison.Ordinal) && command.CommandText.Contains(BlockingConstants.TableName, StringComparison.Ordinal))
+            {
+                cts.Cancel();
+            }
+
+            return base.NonQueryExecutedAsync(command, eventData, result, cancellationToken);
+        }
     }
 }

@@ -416,7 +416,7 @@ gives Umbraco's challenge (302/401) for anonymous visitors on the page path, whe
 plain 404.
 
 **File path.** `FileNotFoundMiddleware`, added once by `UsePageNotFoundTracker()` (via the internal
-`UseFileNotFoundHandling()`). It runs `next` first and acts when: GET or HEAD, last path segment has an
+`UseFileNotFoundHandling()`; the block middleware is added next to it, see Blocked URLs, Middleware placement). It runs `next` first and acts when: GET or HEAD, last path segment has an
 extension, the path is not Umbraco-owned and not under `/.well-known`, status is 404, the response has not
 started and has no content type or length. So it replaces any bodyless 404 on an extension path, including a
 site endpoint's `NotFound()`; a component that writes a body wins. File requests never reach Umbraco's
@@ -991,20 +991,19 @@ queued hits it covers (`TrackingQueue.DiscardMatching` inside `ITrackingFlusher.
 swallowed, then `base.Refresh`. The service talks to it through the internal seam `IBlockRuleChangeNotifier`
 (`DistributedBlockRuleChangeNotifier`, `DistributedCache.RefreshByPayload`; `AddUnique`). `BlockHitMatcher.Create` is the one
 in-memory predicate (pattern + domain + culture, ignoring case) used by the service and the refresher. The originating server
-runs both its own local refresh/discard and the refresher (harmless repetition). `NoOpBlockRuleChangeNotifier` exists but is
-not registered.
+runs both its own local refresh/discard and the refresher (harmless repetition). `BlockRuleCacheRefresherIntegrationTests` push a payload through Umbraco's `IJsonSerializer` into `Refresh(string json)` (the only path that reaches other servers; the positional record and its enum bind fine, no payload change needed).
 
 **Create and delete** (`IBlockRuleService` in Core, `BlockRuleService` internal, `AddUnique`). `CreateAsync(pattern,
 statusCode, domain, culture, ct)`: normalise, canonicalise the scope, validate (`Invalid` with the message, nothing else
 happens), upsert (`ExecuteUpdate` of the status by identity, else insert; on a unique violation the update is retried once),
-then `RefreshAsync`, then notify `Saved` (a failing notifier is a warning), then inside `RunExclusiveAsync`:
+then (using `CancellationToken.None`: once the rule is committed a client abort must not leave the stored and the enforced rules out of step, so the request token only guards the upsert and, in delete, the rule delete) `RefreshAsync`, then notify `Saved` (a failing notifier is a warning), then inside `RunExclusiveAsync`:
 `DiscardMatching` and an `ExecuteDelete` of the tracked rows. The delete (`WhereMatches`) is SQL: `RelativePath LIKE @like
 ESCAPE '\'` (`BlockLikePattern.ToLike` returns `(Like, Exact)`: `*` to `%`, `\ % _ [` escaped; `Exact` is the pattern
 without `/*` for a trailing `/*`, added as `OR RelativePath = @exact`), plus `Domain = @domain` and
 `LOWER(Culture) = @culture` when scoped. Because it runs on `RelativePath`, all query-string variants of a path go too.
 `Like_and_matcher_agree` (unit, SQLite) and `Like_delete_and_matcher_select_the_same_rows` (integration, SQLite and SQL
 Server) prove the SQL and `CompiledBlockPattern` select the same rows, `%`, `_`, `[`, `\` included. A failing removal keeps
-the rule: `CreateBlockRuleOutcome(Saved, BlockRuleService.RecordsNotRemovedMessage, RecordsRemoved: false)`.
+the rule: `CreateBlockRuleOutcome(Saved, BlockingConstants.RecordsNotRemovedMessage, RecordsRemoved: false)`.
 `DeleteAsync(id)` deletes by id (false for an unknown id), then refreshes and notifies `Removed`; hits after that are
 tracked again from count 1. `QueryAsync` mirrors the tracked URL query (search on the normalised `Pattern` with
 `LikePattern.Contains`, Any/Empty/Exactly filters, Id tie-break, take clamped 1 to 100). `GetScopeOptionsAsync`: Umbraco's
@@ -1012,10 +1011,8 @@ domain names (no wildcard domains) trimmed, lower-cased, distinct, ordinal-sorte
 
 **Accepted limits.** A hit that passed the middleware just before the refresh can be enqueued after the discard and be
 written back as a count-1 row on that server (`NotFoundTracker` does not consult the snapshot). On other servers the discard
-is best effort (their refresher runs whenever the distributed cache delivers the instruction). The request's cancellation
-token flows into the post-save steps: a request cancelled after the upsert leaves the rule saved without the local refresh
-and delete; the snapshot catches up on the next refresh (another save, a domain/language change or a restart), the stale
-tracked rows stay until removed. A failed `RefreshAsync` in create/delete is not logged by the service (the provider logs it).
+is best effort (their refresher runs whenever the distributed cache delivers the instruction).
+A failed `RefreshAsync` in create/delete is not logged by the service (the provider logs it).
 
 **Endpoints** (BackOffice, base `/umbraco/pagenotfoundtracker/api/v1`, policy `PageNotFoundTracker.DashboardAccess`, same
 OpenAPI document; 401 anonymous, 403 outside the groups, 503 when persistence is `Unavailable`):
@@ -1100,7 +1097,7 @@ hostnames profile, and the upsert's duplicate-key retry (no seam to inject the r
   project only (AutoFixture.NUnit3 needs NUnit 3.x); the central `Moq` 4.21.0 and
   `Microsoft.NET.Test.Sdk` 18.10.1 are what that package requires. Do not lower them.
 - Client: Vitest (`npm test` in the client project, `*.test.ts` next to the code) for pure logic only; the
-  collection elements and the context subclass are covered by E2E and manual checks. CI runs it before the client build.
+  collection elements and the context subclasses (`PnftPagedCollectionContextBase` and its subclasses) are covered by E2E and manual checks. CI runs it before the client build.
 - E2E: `@umbraco/playwright-testhelpers` 17.0.36, the correct helper for Umbraco 17 (the Umbraco 18
   helper is `@umbraco-cms/acceptance-test-helpers`; the API is the same, only the import differs).
   `tslib` is an explicit dev dependency because the helper needs it without declaring it. Copy
@@ -1169,7 +1166,7 @@ hostnames profile, and the upsert's duplicate-key retry (no seam to inject the r
   (the harness scratch directory) the solution build failed with MSB3030 on `Core.dll` although each project built alone.
 - The client build must run before `dotnet build`/`dotnet pack`; `App_Plugins` is gitignored.
 - `UsePageNotFoundTracker()` goes after `BootUmbracoAsync()` and before `UseUmbraco()` in `Program.cs`
-  (see the test site). It registers the file 404 middleware (once); placed after `UseUmbraco()` the
+  (see the test site). It registers the block middleware and the file 404 middleware (once each); placed after `UseUmbraco()` the
   middleware is inert. Without the call only the page path (last-chance finder) works.
 - Project-reference use and packing of the client bundle both depend on the linked `Content` item with
   `ContentRoot` metadata in the entry csproj (see Packing facts); keep that metadata.

@@ -3,6 +3,7 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Umbraco.Cms.Core.Cache;
+using Umbraco.Cms.Core.Serialization;
 using Umbraco.Cms.Tests.Common.Testing;
 using Umbraco.Community.PageNotFoundTracker.Core.Blocking;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
@@ -65,6 +66,81 @@ internal sealed class BlockRuleCacheRefresherIntegrationTests : PageNotFoundTest
         {
             Assert.That(after.StatusCode, Is.EqualTo(HttpStatusCode.Gone));
             Assert.That(queue.TakeBatch().Select(h => h.RelativePath), Is.EqualTo(new[] { "/keep-me" }));
+        });
+    }
+
+    /// <summary>
+    /// The payload survives Umbraco's own JSON serializer (the one that carries it to the other servers), constructor
+    /// binding and the <see cref="BlockRuleChange"/> enum included.
+    /// </summary>
+    /// <param name="change">The change.</param>
+    [TestCase(BlockRuleChange.Saved)]
+    [TestCase(BlockRuleChange.Removed)]
+    public void Payload_round_trips_through_the_umbraco_json_serializer(BlockRuleChange change)
+    {
+        var serializer = this.GetRequiredService<IJsonSerializer>();
+        var payload = new BlockRuleCachePayload("/a/*", "example.com", "nl-NL", change);
+
+        string json = serializer.Serialize(new[] { payload });
+        BlockRuleCachePayload[]? back = serializer.Deserialize<BlockRuleCachePayload[]>(json);
+
+        Assert.That(back, Is.EqualTo(new[] { payload }), json);
+    }
+
+    /// <summary>
+    /// The path that reaches another server: a payload serialized by Umbraco's serializer goes through the refresher's
+    /// <c>Refresh(string json)</c>. A saved rule inserted directly in the database applies and the matching queued hit is
+    /// discarded while the non-matching one stays.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Saved_json_refresh_applies_the_rule_and_discards_the_matching_queued_hit()
+    {
+        await this.InsertRuleAsync("/json-saved/*", 410);
+        using (HttpResponseMessage before = await this.GetAsync("/json-saved/x"))
+        {
+            Assert.That(before.StatusCode, Is.Not.EqualTo(HttpStatusCode.Gone), "The rule must not apply before the refresh.");
+        }
+
+        var queue = this.GetRequiredService<TrackingQueue>();
+        queue.TryEnqueue(Hit("/json-saved/queued"));
+        queue.TryEnqueue(Hit("/keep-me"));
+        string json = this.GetRequiredService<IJsonSerializer>()
+            .Serialize(new[] { new BlockRuleCachePayload("/json-saved/*", string.Empty, string.Empty, BlockRuleChange.Saved) });
+        var refresher = (BlockRuleCacheRefresher)this.GetRequiredService<CacheRefresherCollection>()[BlockRuleCacheRefresher.UniqueId]!;
+
+        refresher.Refresh(json);
+
+        using HttpResponseMessage after = await this.GetAsync("/json-saved/x");
+        Assert.Multiple(() =>
+        {
+            Assert.That(after.StatusCode, Is.EqualTo(HttpStatusCode.Gone));
+            Assert.That(queue.TakeBatch().Select(h => h.RelativePath), Is.EqualTo(new[] { "/keep-me" }));
+        });
+    }
+
+    /// <summary>
+    /// A removed payload serialized by Umbraco's serializer rebuilds the snapshot (a rule inserted directly applies) and
+    /// discards no queued hit.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Removed_json_refresh_rebuilds_the_snapshot_and_keeps_queued_hits()
+    {
+        await this.InsertRuleAsync("/json-removed/*", 403);
+        var queue = this.GetRequiredService<TrackingQueue>();
+        queue.TryEnqueue(Hit("/json-removed/queued"));
+        string json = this.GetRequiredService<IJsonSerializer>()
+            .Serialize(new[] { new BlockRuleCachePayload("/json-removed/*", string.Empty, string.Empty, BlockRuleChange.Removed) });
+        var refresher = (BlockRuleCacheRefresher)this.GetRequiredService<CacheRefresherCollection>()[BlockRuleCacheRefresher.UniqueId]!;
+
+        refresher.Refresh(json);
+
+        using HttpResponseMessage after = await this.GetAsync("/json-removed/x");
+        Assert.Multiple(() =>
+        {
+            Assert.That(after.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(queue.TakeBatch().Select(h => h.RelativePath), Is.EqualTo(new[] { "/json-removed/queued" }));
         });
     }
 

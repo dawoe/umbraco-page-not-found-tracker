@@ -107,20 +107,6 @@ internal sealed class BlockRuleCacheRefresherTests
     }
 
     /// <summary>
-    /// The payload survives the JSON round trip that carries it to the other servers.
-    /// </summary>
-    [Test]
-    public void Payload_round_trips_through_system_text_json()
-    {
-        var payload = new BlockRuleCachePayload("/a/*", "example.com", "nl-NL", BlockRuleChange.Saved);
-
-        string json = System.Text.Json.JsonSerializer.Serialize(new[] { payload });
-        BlockRuleCachePayload[]? back = System.Text.Json.JsonSerializer.Deserialize<BlockRuleCachePayload[]>(json);
-
-        Assert.That(back, Is.EqualTo(new[] { payload }));
-    }
-
-    /// <summary>
     /// The refresher id and name are fixed.
     /// </summary>
     [Test]

@@ -26,11 +26,6 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Blocking;
 internal sealed class BlockRuleService : IBlockRuleService
 {
     /// <summary>
-    /// The message when a rule was saved but the tracked records it covers could not be removed.
-    /// </summary>
-    internal const string RecordsNotRemovedMessage = "The rule was saved, but the tracked URLs it covers could not be removed.";
-
-    /// <summary>
     /// The largest page size the list returns.
     /// </summary>
     internal const int MaxTake = 100;
@@ -134,13 +129,16 @@ internal sealed class BlockRuleService : IBlockRuleService
         };
 
         await this.UpsertAsync(rule, cancellationToken);
-        await this.snapshotProvider.RefreshAsync(cancellationToken);
-        await this.NotifyAsync(new BlockRuleCachePayload(normalised, scopeDomain, scopeCulture, BlockRuleChange.Saved), cancellationToken);
 
-        bool recordsRemoved = await this.RemoveMatchingRecordsAsync(normalised, scopeDomain, scopeCulture, cancellationToken);
+        // The rule is committed from here on: refresh, notify and the record removal ignore the request token, or a client
+        // abort would leave the stored rule and the enforced rules out of step on every server.
+        await this.snapshotProvider.RefreshAsync(CancellationToken.None);
+        await this.NotifyAsync(new BlockRuleCachePayload(normalised, scopeDomain, scopeCulture, BlockRuleChange.Saved));
+
+        bool recordsRemoved = await this.RemoveMatchingRecordsAsync(normalised, scopeDomain, scopeCulture);
         return new CreateBlockRuleOutcome(
             CreateBlockRuleStatus.Saved,
-            recordsRemoved ? null : RecordsNotRemovedMessage,
+            recordsRemoved ? null : BlockingConstants.RecordsNotRemovedMessage,
             recordsRemoved);
     }
 
@@ -157,8 +155,8 @@ internal sealed class BlockRuleService : IBlockRuleService
             }
         }
 
-        await this.snapshotProvider.RefreshAsync(cancellationToken);
-        await this.NotifyAsync(new BlockRuleCachePayload(rule.Pattern, rule.Domain, rule.Culture, BlockRuleChange.Removed), cancellationToken);
+        await this.snapshotProvider.RefreshAsync(CancellationToken.None);
+        await this.NotifyAsync(new BlockRuleCachePayload(rule.Pattern, rule.Domain, rule.Culture, BlockRuleChange.Removed));
         return true;
     }
 
@@ -344,13 +342,13 @@ internal sealed class BlockRuleService : IBlockRuleService
         }
     }
 
-    private async Task NotifyAsync(BlockRuleCachePayload payload, CancellationToken cancellationToken)
+    private async Task NotifyAsync(BlockRuleCachePayload payload)
     {
         try
         {
-            await this.notifier.NotifyAsync(payload, cancellationToken);
+            await this.notifier.NotifyAsync(payload, CancellationToken.None);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception ex)
         {
             this.logger.LogWarning(
                 ex,
@@ -359,7 +357,7 @@ internal sealed class BlockRuleService : IBlockRuleService
         }
     }
 
-    private async Task<bool> RemoveMatchingRecordsAsync(string pattern, string domain, string culture, CancellationToken cancellationToken)
+    private async Task<bool> RemoveMatchingRecordsAsync(string pattern, string domain, string culture)
     {
         Func<TrackedUrlHit, bool> matches = BlockHitMatcher.Create(pattern, domain, culture);
         try
@@ -369,13 +367,13 @@ internal sealed class BlockRuleService : IBlockRuleService
                 {
                     this.queue.DiscardMatching(matches);
 
-                    await using PageNotFoundTrackerDbContext dbContext = await this.CreateContextAsync(cancellationToken);
-                    await WhereMatches(dbContext.TrackedUrls, pattern, domain, culture).ExecuteDeleteAsync(cancellationToken);
+                    await using PageNotFoundTrackerDbContext dbContext = await this.CreateContextAsync(CancellationToken.None);
+                    await WhereMatches(dbContext.TrackedUrls, pattern, domain, culture).ExecuteDeleteAsync(CancellationToken.None);
                 },
-                cancellationToken);
+                CancellationToken.None);
             return true;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception ex)
         {
             this.logger.LogError(
                 ex,

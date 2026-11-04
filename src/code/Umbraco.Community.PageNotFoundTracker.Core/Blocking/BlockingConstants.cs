@@ -31,4 +31,9 @@ public static class BlockingConstants
     /// The maximum length of a normalised pattern.
     /// </summary>
     public const int MaxPatternLength = 800;
+
+    /// <summary>
+    /// The message when a rule was saved but the tracked records it covers could not be removed.
+    /// </summary>
+    public const string RecordsNotRemovedMessage = "The rule was saved, but the tracked URLs it covers could not be removed.";
 }
