@@ -155,7 +155,7 @@ can run side by side. Run with `dotnet run --launch-profile <name>` from `test-s
 | `multi-site-aliases` | Two sites told apart by path (Site A, Site B) | 44402 / 44302 | `https://localhost:44402/siteA/...`, `/siteB/...` | `multi-site-aliases.sqlite.db` |
 | `multi-language` | One site, en-US (default), nl-NL, fr-FR | 44403 / 44303 | `https://localhost:44403/en`, `/nl`, `/fr` | `multi-language.sqlite.db` |
 | `multi-site-hostnames` | Two sites told apart by hostname | 44404 / 44304 | `https://www.siteA.local:44404/`, `https://www.siteB.local:44404/` | `multi-site-hostnames.sqlite.db` |
-| `sql-server` | One site, one language, SQL Server | 44405 / 44305 | `https://localhost:44405/` | SQL Server `PageNotFoundTracker` on `localhost,14330` (not committed) |
+| `sql-server` | One site, one language, SQL Server | 44405 / 44305 | `https://localhost:44405/` | SQL Server `PageNotFoundTracker` on LocalDB `(localdb)\pnft-test` (not committed) |
 
 Backoffice: `https://localhost:<port>/umbraco`, login `admin@example.com` / `1234567890`
 (unattended install creates this user; login is by email).
@@ -207,30 +207,35 @@ that resolves to this machine. To use it:
 
 ### SQL Server profile setup
 
-`sql-server` proves the package on SQL Server (tracking, migrations). Its connection string is
-`Server=localhost,14330;Database=PageNotFoundTracker;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`
-(provider `Microsoft.Data.SqlClient`; test-only values, never reuse them). It has no MCP user, no committed database
-and no scenario content beyond what the Clean install creates (tracking needs no 404 page). Start SQL Server in Docker:
-
-```bash
-docker run -d --name pnft-sqlserver -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=PnftTest-only1!' \
-  -p 14330:1433 mcr.microsoft.com/mssql/server:2022-latest
-```
-
-Then `dotnet run --launch-profile sql-server`. The first start logs "Cannot open database" / "database not available"
-errors until the unattended install creates the `PageNotFoundTracker` database (it does, with the `sa` login), installs
-Umbraco and Clean; then the package migrates its tables. Reset with `docker rm -f pnft-sqlserver`.
-
-Without Docker, run against a LocalDB instance instead. `launchSettings.json` environment variables override shell
-variables in `dotnet run`, so override the connection string with a command-line argument (highest configuration
-precedence) rather than `$env:`:
+`sql-server` proves the package on SQL Server (tracking, migrations). The profile uses a LocalDB named instance, so it
+needs no Docker (Windows only: `Integrated Security`). Its connection string is
+`Server=(localdb)\pnft-test;Database=PageNotFoundTracker;Integrated Security=True;TrustServerCertificate=True`
+(provider `Microsoft.Data.SqlClient`). It has no MCP user, no committed database and no scenario content beyond what
+the Clean install creates (tracking needs no 404 page). Create the instance once, then run the profile:
 
 ```powershell
 sqllocaldb versions                      # pick a version Microsoft.Data.SqlClient can start (see below)
-sqllocaldb create pnft-test 15.0 -s      # -s also starts it
-dotnet run --launch-profile sql-server -- "--ConnectionStrings:umbracoDbDSN=Server=(localdb)\pnft-test;Database=PageNotFoundTracker;Integrated Security=True;TrustServerCertificate=True"
+sqllocaldb create pnft-test 15.0 -s      # -s also starts it; an existing instance starts on first connect
+dotnet run --launch-profile sql-server
 # afterwards: sqlcmd -S "(localdb)\pnft-test" -Q "ALTER DATABASE [PageNotFoundTracker] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [PageNotFoundTracker]"
 ```
+
+The first start logs "Cannot open database" / "database not available" errors until the unattended install creates the
+`PageNotFoundTracker` database, installs Umbraco and Clean; then the package migrates its tables. If the log instead
+shows "TCP Provider ... timed out" the profile is pointing at a SQL Server that is not running (an old Docker connection
+string): check the connection string in `launchSettings.json`.
+
+To use a SQL Server in Docker (or on Linux/macOS) instead, start it and override the connection string with a
+command-line argument. `launchSettings.json` environment variables override shell variables in `dotnet run`, so a
+command-line argument (highest configuration precedence) is the way, not `$env:`:
+
+```bash
+docker run -d --name pnft-sqlserver -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=PnftTest-only1!' \
+  -p 14330:1433 mcr.microsoft.com/mssql/server:2022-latest   # test-only password, never reuse it
+dotnet run --launch-profile sql-server -- "--ConnectionStrings:umbracoDbDSN=Server=localhost,14330;Database=PageNotFoundTracker;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True"
+```
+
+Reset the container with `docker rm -f pnft-sqlserver`.
 
 Pin the LocalDB version. Without it `sqllocaldb create` uses the newest installed version. On a machine with
 LocalDB 2019 (15.0) and 2025 (17.0) installed, an instance created with 17.0 accepted `sqlcmd` connections, but the site
@@ -241,8 +246,8 @@ instance's version. The same applies to the instance used for `PNFT_SQLSERVER_CO
 Use a named instance, not the shared `MSSQLLocalDB` or a full local SQL Server. Running the profile still rewrites
 `appsettings.json` (HMAC key): restore it with `git checkout`.
 
-Only `single-site` is verified in CI. The other profiles were verified manually (`sql-server` against LocalDB through
-the override above, not against the Docker container).
+Only `single-site` is verified in CI. The other profiles were verified manually (`sql-server` against LocalDB, the
+profile default; not against the Docker container).
 
 ## Committed databases (read this before running a profile)
 

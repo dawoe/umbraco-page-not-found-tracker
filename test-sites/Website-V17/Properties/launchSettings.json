@@ -76,7 +76,7 @@
       "applicationUrl": "https://localhost:44405;http://localhost:44305",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ConnectionStrings__umbracoDbDSN": "Server=localhost,14330;Database=PageNotFoundTracker;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True",
+        "ConnectionStrings__umbracoDbDSN": "Server=(localdb)\\pnft-test;Database=PageNotFoundTracker;Integrated Security=True;TrustServerCertificate=True",
         "ConnectionStrings__umbracoDbDSN_ProviderName": "Microsoft.Data.SqlClient",
         "Umbraco__CMS__Unattended__InstallUnattended": "true",
         "Umbraco__CMS__Unattended__UnattendedUserName": "Test Admin",
