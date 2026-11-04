@@ -11,9 +11,10 @@ that runs in four scenarios), 404 handling (spec 2: the configured 404 page is s
 and missing files), tracking (spec 3: every 404 is counted per URL in a database table, SQLite or SQL
 Server), the backoffice dashboard (spec 4: a searchable, sortable, filterable, paged list of tracked
 URLs in the Content section, served by the package's own Management API) and redirect creation (spec 5: a
-"Create redirect" row action that creates a redirect and removes the tracked URL; replaceable provider and form).
-Blocking and implementer documentation (specs 6 and 7) are planned, not built.
-Do not document or promise them as existing.
+"Create redirect" row action that creates a redirect and removes the tracked URL; replaceable provider and form) and
+blocked URLs (spec 6: wildcard block rules with a status code and a domain/culture scope, answered before Umbraco with an
+empty body, never tracked; a "Block" row action and a second "Blocked URLs" dashboard tab).
+Implementer documentation (spec 7) is planned, not built. Do not document or promise it as existing.
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
 
@@ -22,7 +23,7 @@ Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spe
 3. Tracking of 404 URLs: `docs/superpowers/specs/2026-11-01-tracking-design.md` (done)
 4. Backoffice dashboard: `docs/superpowers/specs/2026-11-01-dashboard-design.md` (done)
 5. Redirect creation: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md` (done)
-6. Blocked URLs: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md`
+6. Blocked URLs: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md` (done)
 7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md`
 
 Plans (`docs/superpowers/plans/`):
@@ -32,6 +33,7 @@ Plans (`docs/superpowers/plans/`):
 - Tracking: `docs/superpowers/plans/2026-11-03-tracking.md`
 - Dashboard: `docs/superpowers/plans/2026-11-03-dashboard.md`
 - Redirect creation: `docs/superpowers/plans/2026-11-04-redirect-creation.md`
+- Blocked URLs: `docs/superpowers/plans/2026-11-04-blocked-urls.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -43,10 +45,12 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
   central package management (Umbraco pinned to `[17.8.0,18.0.0)`), `packages.lock.json` per project
 - `src/code/Umbraco.Community.PageNotFoundTracker/` — entry package, the only packable project.
   Holds `UsePageNotFoundTracker()` (`Extensions/WebApplicationExtensions.cs`)
-- `src/code/Umbraco.Community.PageNotFoundTracker.Core/` — settings, models, interfaces only
+- `src/code/Umbraco.Community.PageNotFoundTracker.Core/` — settings, models, interfaces only (block rule
+  model and contracts in `Blocking/`)
 - `src/code/Umbraco.Community.PageNotFoundTracker.Infrastructure/` — composer, middleware,
   services, the tracking `DbContext`, queue, flush and migration services, the dashboard access rule
-  and the tracked URL query service
+  and the tracked URL query service; `Blocking/` holds pattern matching, the rule snapshot and its provider, the block
+  middleware, the rule service and the cache refresher
 - `src/code/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite/` and `.Persistence.SqlServer/` —
   tracking database providers, each with its own EF Core `Migrations/` and a design-time factory
   (`IsPackable=false`, bundled into the entry package)
@@ -56,15 +60,17 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
 - `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client/` — backoffice client
   (TypeScript, Lit, Vite, Vitest): the generated API client (`src/api/`), the tracked URL collection
   (`src/collection/`), the dashboard (`src/dashboards/tracked-urls/`), the access condition
-  (`src/conditions/`), the create redirect flow (`src/redirect/`: form extension type, modal, default form, row action) and the
-  English texts (`src/localization/`). `src/client-ready.ts` lives outside `src/api/` on purpose (see Redirects). The spec 1
+  (`src/conditions/`), the create redirect flow (`src/redirect/`: form extension type, modal, default form, row action), the
+  blocked URLs pieces (`src/blocking/`: rule collection and dashboard, Block/Unblock actions, Add rule, rule modal) and the
+  English texts (`src/localization/`). Shared paged-collection bases live in `src/collection/`. `src/client-ready.ts` lives outside `src/api/` on purpose (see Redirects). The spec 1
   placeholder dashboard is gone
 - `src/test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests/` and `.BackOffice.Tests/` —
-  NUnit + Moq unit tests
+  NUnit + Moq unit tests (blocking tests in `Infrastructure.Tests/Blocking/`, `BackOffice.Tests/BlockRuleControllersTests.cs`)
 - `src/test/Umbraco.Community.PageNotFoundTracker.Integration.Tests/` — Umbraco integration tests
-  (boots Umbraco on SQLite with the package composed in; tracking database tests on SQLite and SQL Server)
+  (boots Umbraco on SQLite with the package composed in; tracking database tests on SQLite and SQL Server; blocking in
+  `Blocking/` and `ManagementApi/BlockRulesApiTests.cs`)
 - `src/test/Umbraco.Community.PageNotFoundTracker.E2E/` — Playwright tests (`tests/not-found.spec.ts`,
-  `tests/dashboard.spec.ts`, `tests/redirect.spec.ts`)
+  `tests/dashboard.spec.ts`, `tests/redirect.spec.ts`, `tests/blocked.spec.ts`)
 - `test-sites/Website-V17/` — Umbraco 17 test site (Clean starter kit), project-references the
   entry package, both persistence projects and BackOffice (the entry project references them `PrivateAssets=all`
   and never uses them in code, so a project-referencing site would not get their dlls: tracking would be off and
@@ -428,8 +434,8 @@ dictionary stops at the `CultureInfo.InvariantCulture` instance by reference, so
 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` reproduces it.
 
 **Umbraco-owned paths.** `UmbracoOwnedPaths` (Core, public static): `/umbraco`, `/App_Plugins`, `/_framework`
-(segment boundary, case-insensitive), plus `IsFileRequest`. Spec 6 (blocking) is meant to reuse it; do not
-duplicate the list.
+(segment boundary, case-insensitive), plus `IsFileRequest`. Spec 6 (blocking) reuses it for the rule validator and the
+runtime exemption; do not duplicate the list.
 
 **Recording call point (spec 3).** `INotFoundRecorder.RecordAsync(NotFoundOccurrence, ct)` (internal);
 `NotFoundTracker` (spec 3, see Tracking) is the default. `NotFoundOccurrence(PathAndQuery, Domain?, Culture?, IsFile, PageResolved)`.
@@ -595,7 +601,8 @@ commit that (restore with `git checkout`, see Committed databases). Committed da
 A dashboard "Page not found" in the Content section (`/umbraco/section/content/dashboard/page-not-found-tracker`) lists
 the tracked URLs: URL, domain, culture, type (page or file), first seen, last seen, hits; default order hits descending.
 Search by URL, domain and culture filters, page size 20 (default), 50 or 100, every column sortable. Not live: users
-reload (or change a filter) to see new data. Row action: Create redirect (spec 5, see Redirects); blocking (spec 6) is planned. States: loading,
+reload (or change a filter) to see new data. Row actions: Create redirect (spec 5, see Redirects) and Block (spec 6, see
+Blocked URLs). A second tab "Blocked URLs" lists the block rules (spec 6). States: loading,
 empty (nothing tracked), empty after filtering, error, and unavailable (503: database unsupported or migrations failed;
 final for the process, needs a fix and a restart).
 
@@ -683,12 +690,18 @@ refresh, Umbraco's interceptors), then `markClientConfigured()` (`client-ready.t
   `Pnft.CollectionView.TrackedUrl.Table` (the only view), search box `Pnft.CollectionTextFilter.TrackedUrl`
   (`collectionTextFilter`, kind `default`; the framework's `filter` is mapped to the API's `search` in `query.ts`).
 - Custom pieces, because the 17.8 framework lacks them: a `collectionView` element on `UmbCollectionViewElementBase` +
-  `umb-table` (the 17.8 `table` kind cannot sort and renders plain values), and `PnftTrackedUrlCollectionContext`
-  extending `UmbDefaultCollectionContext` (keeps the repository error for the error and unavailable states, resets to
-  page 1 on sort/search/filter/page size, page size 20 instead of 50, `setPageSize`, `requestFilterOptions`). The context
-  subclass overrides protected 17.8 internals and copies `collection-default.context.js` logic; the header `data-mark`s
-  pass a Lit template as the column name. **Re-check both on every Umbraco upgrade.** Its token
-  `PNFT_TRACKED_URL_COLLECTION_CONTEXT` sits on the framework alias with a discriminator.
+  `umb-table` (the 17.8 `table` kind cannot sort and renders plain values; shared base
+  `collection/views/table/paged-table.element.base.ts`), and `PnftPagedCollectionContextBase`
+  (`collection/paged-collection.context.base.ts`) extending `UmbDefaultCollectionContext` (keeps the repository error for
+  the error and unavailable states, resets to page 1 on sort/search/filter/page size, page size 20 instead of 50,
+  `setPageSize`, `requestFilterOptions`); `PnftTrackedUrlCollectionContext` is a thin subclass. The base overrides
+  protected 17.8 internals and copies `collection-default.context.js` logic; the header `data-mark`s pass a Lit template
+  as the column name. **Re-check both on every Umbraco upgrade.** Its token `PNFT_TRACKED_URL_COLLECTION_CONTEXT` sits on
+  the framework alias with a discriminator: `pnftCollection === 'tracked-url'` (the block rule collection has the same
+  shape, see Blocked URLs). `PNFT_PAGED_COLLECTION_CONTEXT` matches any package collection (`pnftCollection` is a string)
+  for the shared toolbar pieces. The toolbar, states, search base, domain/culture filter and page size element are shared
+  too (`paged-collection.element.base.ts`, `states/state-message.element.ts`, `filters/search.base.ts`,
+  `filters/domain-culture-filter.element.ts`, `pagination/page-size.element.ts`).
 - "No domain"/"No culture" are the `PNFT_EMPTY` marker (`collection/types.ts`, the string `'\u0000empty'`), mapped to
   `noDomain=true`/`noCulture=true`; undefined or `''` means all. It must be a string: Umbraco's `UmbDeepState` only emits
   when `JSON.stringify` of the value changes, and a symbol serialises like "All", so the change was invisible to
@@ -709,10 +722,12 @@ refresh, Umbraco's interceptors), then `markClientConfigured()` (`client-ready.t
 `PNFT_TRACKED_URL_ENTITY_TYPE = 'page-not-found-tracker-url'` (`src/entity.ts`). Every table row gets an
 `UmbEntityContext` with that entity type and `unique = String(id)`, and the table has the framework's entity actions
 column (`umb-entity-actions-table-column-view`, last column, hidden when the collection hides item actions). An action
-is a manifest plus a class extending `UmbEntityActionBase`. The one registered action is the real example to copy for
-spec 6 (blocking): `src/redirect/manifests.ts` (`Pnft.EntityAction.TrackedUrl.CreateRedirect`, kind `default`,
+is a manifest plus a class extending `UmbEntityActionBase`. Two actions are registered on tracked rows:
+`src/redirect/manifests.ts` (`Pnft.EntityAction.TrackedUrl.CreateRedirect`, kind `default`, weight 0,
 `forEntityTypes: [PNFT_TRACKED_URL_ENTITY_TYPE]`, icon `icon-arrow-right`, label `#pageNotFoundTracker_createRedirect`,
-`additionalOptions: true`) and `src/redirect/create-redirect.action.ts`.
+`additionalOptions: true`, condition `Pnft.Condition.CanCreateRedirect`) with `src/redirect/create-redirect.action.ts`, and
+`src/blocking/manifests.ts` (`Pnft.EntityAction.TrackedUrl.Block`, kind `default`, weight **-10**, icon `icon-block`,
+label `#pageNotFoundTracker_block`, no condition, so on every row) with `src/blocking/block.action.ts`.
 
 - The action's `args` carry only `entityType` and `unique` (the id as a string). The other row fields
   (`PnftTrackedUrlCollectionModel`: `id`, `url`, `relativePath`, `domain`, `culture`, `isFile`, `hitCount`, `firstSeen`,
@@ -723,7 +738,11 @@ spec 6 (blocking): `src/redirect/manifests.ts` (`Pnft.EntityAction.TrackedUrl.Cr
   and re-evaluates when the items change. The entity actions bundle evaluates action conditions with itself (inside the
   row) as host and renders nothing when no action is permitted, so a hidden action leaves no button.
 - With a single permitted action the bundle renders an inline button in the actions column (data-mark
-  `entity-action:<alias>`), not a dropdown. A second action turns that into a dropdown: re-check the E2E selectors.
+  `entity-action:<alias>`), not a dropdown. With two or more it renders the first (highest weight) inline plus a "..."
+  dropdown (`umb-entity-actions-dropdown`) listing all of them. So on page rows Create redirect stays the inline button and
+  Block is reached through the dropdown (E2E: click `umb-entity-actions-dropdown uui-button` in the row, then
+  `entity-action:Pnft.EntityAction.TrackedUrl.Block`); file rows and query-string rows (no Create redirect) show only an
+  inline Block button. A further action changes this again: re-check the E2E selectors.
 - Capture the notification context and localization before opening a modal: the reload after success removes the row
   and with it the action's host. After a change call the collection context's `loadCollection()`.
 
@@ -896,6 +915,182 @@ error texts of the modal (Vitest only) and Confirm being disabled while the requ
 the code sets `disabled` and `state="waiting"`). Not built: a picker filter for published pages (an unpublished page is
 selectable; the provider rejects it with the inline message).
 
+## Blocked URLs (spec 6)
+
+A block rule (wildcard pattern, status code, domain and culture scope) answers matching requests at once with that status
+and an empty body, for any method, before static files, redirects and routing; a blocked request is never tracked,
+independent of `TrackingEnabled`, and no database is read on the request path. Saving a rule deletes the tracked URLs it
+covers. Spec: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md`; plan `docs/superpowers/plans/2026-11-04-blocked-urls.md`.
+
+**Rule model and identity.** `BlockRule` (Core, `...Core.Blocking`): `Id`, `Pattern` (normalised), `PatternHash`,
+`DisplayPattern`, `StatusCode`, `Domain`, `Culture`, `Created` (UTC `DateTime`). Table `pageNotFoundTrackerBlockRule`
+(`BlockingConstants.TableName`) in `PageNotFoundTrackerDbContext`, migration `AddBlockRules` in both provider projects.
+Columns: `Pattern`/`DisplayPattern` 800, `PatternHash` 64, `Domain` 255 and `Culture` 50 (both default `''`, never null;
+empty = all). Identity = unique index (`PatternHash`, `Domain`, `Culture`); `PatternHash` is the SHA-256 hex of the
+normalised pattern (`TrackedUrlNormalizer.Hash`), because 800 + 255 + 50 characters exceed SQL Server's 1700-byte index
+key limit (the spec said "unique on the pattern"; this is the deliberate deviation, as `UrlHash` for tracked URLs).
+Re-adding the same identity (any spelling or case) only updates `StatusCode`; the first `DisplayPattern` (the trimmed input,
+shown in the list) and `Created` stay. The domain is trimmed and lower-cased. The culture is trimmed and canonicalised:
+the Umbraco language ISO code that matches ignoring case, else the .NET `CultureInfo` name when it equals the input
+ignoring case, else lower-case (so `en-us` and `en-US` are one rule on SQLite and SQL Server alike).
+
+**Normalisation and matching** (`BlockPatternNormalizer`, `CompiledBlockPattern`, both Infrastructure). A pattern is
+percent-decoded once (`Uri.UnescapeDataString`, a malformed escape stays as typed), then given `TrackedUrlNormalizer.NormalizePath`
+(leading `/`, runs of `/` collapsed, trailing `/` dropped, a lone `/` kept, lower-cased); at most 800 characters (the
+`RelativePath` column). `*` matches any run of characters including `/`; matching is ordinal-ignore-case on the whole path
+(anchored both ends). A pattern ending in `/*` also matches the bare prefix: `/wp-admin/*` matches `/wp-admin` (a request
+to `/wp-admin/` normalises to that). A decoded `%2A` becomes a live wildcard (decoding runs before compiling). Path only:
+the query string is never matched (`/wp-login.php?x=1` is blocked by `/wp-login.php`). The request side is Kestrel's
+already-decoded `Request.Path` (everything but `%2F`), normalised with the same rules and **not** decoded again (as tracking).
+
+**Domains, alias stripping, precedence.** `BlockSnapshot.FindStatus(path, host, port)` does the domain selection itself, with
+`DomainSelector` (Infrastructure `NotFound/`, shared with `RequestDomainMatcher`: host case-insensitive, port equal, longest
+segment-boundary path prefix wins), and only when `NeedsDomainMatch` (a scoped rule exists or a domain has a path). The
+matched domain's own path is removed (`TrackedUrlNormalizer.RelativeTo`), so `/wp-admin/*` matches `/siteA/wp-admin/x` under
+`localhost:44402/sitea`. A rule's domain is compared with the lower-cased matched domain name (as tracking stores it), its
+culture with that domain's culture, both ignoring case. A request with no matched domain gets only all-domain, all-culture
+rules. Rules are sorted once when the snapshot is built and the first match wins: domain-scoped before all domains, then
+culture-scoped before all cultures, then the longer literal prefix (characters before the first `*`), then the lowest status.
+
+**Safeguards.** `BlockPatternValidator.Validate(normalisedPattern, statusCode)` (null = valid, else the message):
+status outside 400 to 499 (`BlockingConstants.MinStatusCode`/`MaxStatusCode`); more than 800 characters; no character
+besides `/` and `*` (`*`, `/*`, `/**`); an owned-path overlap, checked per `UmbracoOwnedPaths.Prefixes` entry (lower-cased):
+the pattern matches the owned path itself (`/um*`, `/*umbraco*`, `/umbraco`), or its literal prefix equals it or lies inside
+its subtree (`/umbraco/x*`, `/App_Plugins/*`); the message names the path ("The pattern covers /umbraco, which belongs to
+Umbraco and cannot be blocked."). Accepted on purpose: `/*.php`, `/*/management/*` (no literal prefix inside an owned
+subtree). `/umbracoextra` is not owned (segment boundary) and can be blocked. The real protection is the runtime exemption:
+the middleware passes owned paths through before touching the snapshot, and `FindStatus` checks the normalised path and the
+alias-stripped path again, so `/umbraco/x.php` is never blocked by `/*.php` and `/sitea/umbraco/x` neither.
+
+**Status codes.** 400 to 499 through the API; the dialog offers 403, 404 and 410 (default 410,
+`BlockingConstants.DefaultStatusCode`). The answer is that status with `Content-Length: 0` and no body; `next` is not called.
+
+**Snapshot lifecycle** (`BlockSnapshotProvider`, singleton, `IBlockSnapshotProvider` `AddUnique`; timings
+`BlockSnapshotTimings.Default`). There is always one current immutable `BlockSnapshot` (rules plus a copy of Umbraco's
+domains), swapped with `Volatile.Write`, so readers never see a half-built set. `BlockSnapshotService` (hosted) waits for
+`RuntimeLevel.Run` and the persistence gate, then loads; a failed load is retried every 30 s. `GetAsync`: the loaded
+snapshot at once; `Empty` at once when persistence is `Unavailable` (one warning from the service, blocking is off for the
+process), below `Run`, or after a failed first attempt; otherwise the request waits for the shared first load at most 5 s,
+then passes through (`Empty`, one warning per process). `RefreshAsync` returns `bool` (true = swapped) and does nothing
+(false) unless persistence is `Available`; it is serialised, and a failed rebuild logs an error and keeps the old snapshot.
+`BlockSnapshotInvalidationHandler` rebuilds on `DomainCacheRefresherNotification` and `LanguageCacheRefresherNotification`.
+The middleware skips normalisation when `snapshot.IsEmpty` (the common case), and returns quietly when the request is
+aborted while waiting (other cancellations propagate).
+
+**Middleware placement.** `BlockMiddleware` is added by `UsePageNotFoundTracker()` (entry project) through the internal
+`UseBlocking()` (once, `Properties` guard), **before** the file 404 middleware, so it runs after `BootUmbracoAsync()` and before
+`UseUmbraco()` (ahead of static files, media, redirects and routing). A site that does not call `UsePageNotFoundTracker()` has
+no blocking at all (rules can be saved, nothing is answered). The integration test server calls `UseBlocking()` then
+`UseFileNotFoundHandling()` from `PageNotFoundTrackerStartupFilter`.
+
+**Refresher (all servers).** `BlockRuleCacheRefresher` (Infrastructure, internal, `PayloadCacheRefresherBase` with
+`BlockRuleCacheRefresherNotification`, `UniqueId` `6d1c8a40-3f2b-4e57-9b1d-5a7c0e2f9d31`, name "Page Not Found Tracker Block
+Rules"), registered with `builder.CacheRefreshers().Add<>()`. Payload `BlockRuleCachePayload(Pattern, Domain, Culture, Change)`
+(Core) with `BlockRuleChange` `Saved`/`Removed`. `Refresh` rebuilds the snapshot, then for each `Saved` payload discards the
+queued hits it covers (`TrackingQueue.DiscardMatching` inside `ITrackingFlusher.RunExclusiveAsync`); every step is logged and
+swallowed, then `base.Refresh`. The service talks to it through the internal seam `IBlockRuleChangeNotifier`
+(`DistributedBlockRuleChangeNotifier`, `DistributedCache.RefreshByPayload`; `AddUnique`). `BlockHitMatcher.Create` is the one
+in-memory predicate (pattern + domain + culture, ignoring case) used by the service and the refresher. The originating server
+runs both its own local refresh/discard and the refresher (harmless repetition). `NoOpBlockRuleChangeNotifier` exists but is
+not registered.
+
+**Create and delete** (`IBlockRuleService` in Core, `BlockRuleService` internal, `AddUnique`). `CreateAsync(pattern,
+statusCode, domain, culture, ct)`: normalise, canonicalise the scope, validate (`Invalid` with the message, nothing else
+happens), upsert (`ExecuteUpdate` of the status by identity, else insert; on a unique violation the update is retried once),
+then `RefreshAsync`, then notify `Saved` (a failing notifier is a warning), then inside `RunExclusiveAsync`:
+`DiscardMatching` and an `ExecuteDelete` of the tracked rows. The delete (`WhereMatches`) is SQL: `RelativePath LIKE @like
+ESCAPE '\'` (`BlockLikePattern.ToLike` returns `(Like, Exact)`: `*` to `%`, `\ % _ [` escaped; `Exact` is the pattern
+without `/*` for a trailing `/*`, added as `OR RelativePath = @exact`), plus `Domain = @domain` and
+`LOWER(Culture) = @culture` when scoped. Because it runs on `RelativePath`, all query-string variants of a path go too.
+`Like_and_matcher_agree` (unit, SQLite) and `Like_delete_and_matcher_select_the_same_rows` (integration, SQLite and SQL
+Server) prove the SQL and `CompiledBlockPattern` select the same rows, `%`, `_`, `[`, `\` included. A failing removal keeps
+the rule: `CreateBlockRuleOutcome(Saved, BlockRuleService.RecordsNotRemovedMessage, RecordsRemoved: false)`.
+`DeleteAsync(id)` deletes by id (false for an unknown id), then refreshes and notifies `Removed`; hits after that are
+tracked again from count 1. `QueryAsync` mirrors the tracked URL query (search on the normalised `Pattern` with
+`LikePattern.Contains`, Any/Empty/Exactly filters, Id tie-break, take clamped 1 to 100). `GetScopeOptionsAsync`: Umbraco's
+domain names (no wildcard domains) trimmed, lower-cased, distinct, ordinal-sorted, and the language ISO codes.
+
+**Accepted limits.** A hit that passed the middleware just before the refresh can be enqueued after the discard and be
+written back as a count-1 row on that server (`NotFoundTracker` does not consult the snapshot). On other servers the discard
+is best effort (their refresher runs whenever the distributed cache delivers the instruction). The request's cancellation
+token flows into the post-save steps: a request cancelled after the upsert leaves the rule saved without the local refresh
+and delete; the snapshot catches up on the next refresh (another save, a domain/language change or a restart), the stale
+tracked rows stay until removed. A failed `RefreshAsync` in create/delete is not logged by the service (the provider logs it).
+
+**Endpoints** (BackOffice, base `/umbraco/pagenotfoundtracker/api/v1`, policy `PageNotFoundTracker.DashboardAccess`, same
+OpenAPI document; 401 anonymous, 403 outside the groups, 503 when persistence is `Unavailable`):
+
+| Operation ID | Route | Answers |
+|---|---|---|
+| `GetBlockRules` | `GET block-rules` | 200 `PagedViewModel<BlockRuleResponseModel>` (`id`, `pattern` = `DisplayPattern`, `statusCode`, `domain`, `culture`, `created` UTC); 400; 503. Query as `GetTrackedUrls` (`skip`, `take` 1 to 100, `search`, `domain`/`noDomain`, `culture`/`noCulture`), `orderBy` `Created` (default), `Pattern`, `StatusCode`, `Domain`, `Culture`, `direction` default `Descending` |
+| `CreateBlockRule` | `POST block-rules` | body `{ pattern, statusCode, domain?, culture? }` (null domain/culture = all); 200 `{ recordsRemoved, message }`; 400 (blank pattern, malformed body, or the validator's message as problem `detail`); 503 |
+| `DeleteBlockRule` | `DELETE block-rules/{id:int}` | 200 empty; 404 problem; 503 |
+| `GetBlockScopeOptions` | `GET block-rules/scope-options` | 200 `{ domains, cultures }` (configured in Umbraco, not from the rules); 503 |
+
+**Client** (`src/blocking/`, constants in `constants.ts`). Entity type `PNFT_BLOCK_RULE_ENTITY_TYPE =
+'page-not-found-tracker-block-rule'`. Dashboard `Umbraco.Community.PageNotFoundTracker.Dashboard.BlockRules` (label
+`#pageNotFoundTracker_blockedDashboardLabel`, pathname `blocked-urls`, so `/umbraco/section/content/dashboard/blocked-urls`,
+same conditions as the tracked dashboard) with weight **4**: 17.8 sorts dashboard tabs by weight descending, so 4 puts
+"Blocked URLs" right after "Page not found" (5); 6 put it first. Collection `Pnft.Collection.BlockRule`, repository
+`Pnft.Repository.BlockRule`, view `Pnft.CollectionView.BlockRule.Table` (columns pattern, status code, domain, culture,
+created; empty scope shown as "All domains"/"All cultures"; default order created descending), search
+`Pnft.CollectionTextFilter.BlockRule`. Collection action `Pnft.CollectionAction.BlockRule.Add` (kind `button`: 17.8 has no
+`default` collection action kind) opens the rule modal empty. Entity actions: `Pnft.EntityAction.TrackedUrl.Block` (see Row
+actions; defaults: the row's relative path with any `?query` dropped, the row's domain and culture, 410) and
+`Pnft.EntityAction.BlockRule.Unblock` (Umbraco's confirm modal `umb-confirm-modal`, buttons `#confirm`/`#cancel`; a 404 shows
+the client's own text). Modal `Pnft.Modal.CreateBlockRule` (sidebar, small; `rule-modal.element.ts`): pattern required
+(placeholder `/wp-admin/*`), domain and culture selects from `GetBlockScopeOptions` plus the preselected value, status
+403/404/410, a static warning, the 400 `detail` inline, Confirm disabled while sending; `open-rule-modal.ts` (shared by
+Block and Add rule) captures the notification context and localization first, reloads the collection and shows a success
+toast, or a warning toast with the server message when `recordsRemoved` is false. The list's domain/culture filter choices
+also come from `GetBlockScopeOptions` (there is no rule filter-options endpoint), so a rule for a domain later removed from
+Umbraco cannot be filtered by its value (it still shows under "Any domain"). `PnftBlockRuleCollectionContext` is a thin
+subclass of `PnftPagedCollectionContextBase` with `pnftCollection = 'block-rule'`; its token
+`PNFT_BLOCK_RULE_COLLECTION_CONTEXT` discriminates on that, as the tracked token does on `'tracked-url'` (without it either
+token would bind to the other collection). Texts: `pageNotFoundTracker_*` in `localization/en.ts`.
+
+**Data marks** (`src/blocking/data-marks.ts`, `PNFT_BLOCK_DATA_MARKS` and `PNFT_BLOCK_SORT_MARKS`, all `pnft-block-*`: list,
+filters, states, modal fields and buttons, `pnft-block-sort-<column>`); `tests/blocked.spec.ts` keeps a copy in its `MARKS`
+constant: change both together. Umbraco's own: `entity-action:Pnft.EntityAction.TrackedUrl.Block`,
+`entity-action:Pnft.EntityAction.BlockRule.Unblock`, `collection-action:Pnft.CollectionAction.BlockRule.Add`. Select option
+values `all`, `empty`, `v:<value>`; status values `403`, `404`, `410`.
+
+**Tests.** Unit (Infrastructure.Tests `Blocking/`): `BlockPatternNormalizerTests`, `CompiledBlockPatternTests`,
+`BlockPatternValidatorTests`, `BlockLikePatternTests` (incl. the SQLite parity test), `BlockSnapshotTests` (precedence table,
+alias stripping, owned paths), `BlockSnapshotProviderTests`, `BlockSnapshotServiceTests`, `BlockMiddlewareTests`,
+`BlockRuleServiceTests`, `BlockRuleCacheRefresherTests`; plus `NotFound/DomainSelectorTests`,
+`Tracking/TrackingQueueDiscardMatchingTests`; BackOffice.Tests `BlockRuleControllersTests`. Integration (`Blocking/`):
+`BlockRuleMigrationTests` and `BlockRuleServiceTests` (SQLite and SQL Server), `BlockSnapshotLoadTests`,
+`BlockMiddlewareIntegrationTests` (410 without body and not recorded, existing page, static file ahead of the static file
+middleware, block beats a redirect, owned paths), `BlockMiddlewareTrackingDisabledTests`,
+`BlockRuleCacheRefresherIntegrationTests`, `BlockScopeOptionsTests`; `ManagementApi/BlockRulesApiTests` (200/400/401/403/404,
+SQLite). Vitest: `block-rule.service`, `block-rule.mapping`, blocking `query`, `block-rule-table.columns`, `rule-form`,
+blocking `manifests`. E2E `tests/blocked.spec.ts` (single-site, `FlushInterval=00:00:01`, run-scoped prefix): block from a
+page row (dropdown) moves the URL to the blocked list and answers 410 with no new tracked row; Add rule with a wildcard;
+unblock makes the URL tracked again from 1; an Umbraco-owned pattern shows the server message inline; a `.css` row is blocked
+through its inline button. Cleanup unblocks every rule with the run prefix.
+
+**Manual checks** (spec 6, real API with a client-credentials token, `curl -k`, `FlushInterval=00:00:01`; all rules deleted
+afterwards):
+- multi-site-aliases: all-domains `/wp-admin/*` (410) answered 410 with an empty body on `/siteA/wp-admin/x`,
+  `/siteB/wp-admin/x`, `/siteA/wp-admin`, `/siteB/WP-ADMIN/a/b?q=1` and a `POST`, and deleted the tracked rows of both sites;
+  `/siteA/about` stayed 200. `/pnft-manual-scoped` scoped to `localhost:44402/siteA` (stored lower-case) answered 403 on Site
+  A only; `/siteB/...` and the no-domain `/pnft-manual-scoped` still got the 404 page and were tracked, and only Site A's row
+  was deleted. A Site B-scoped `/wp-admin/*` (403) beat the all-domains rule on Site B only. `/umbraco/x*` and `/*` were
+  rejected with 400. After unblocking, `/siteA/wp-admin/x` was tracked again with count 1.
+- multi-language: `/pnft-manual-x` with culture `nl-nl` (stored `nl-NL`) answered 410 on `/nl/...` only; `/en/...`, `/fr/...`
+  and the no-domain `/pnft-manual-x` kept the 404 page and their rows; an all-scope `/pnft-all/*` blocked all four. After
+  unblocking `/nl/pnft-manual-x` was tracked again from 1.
+- sql-server (LocalDB `(localdb)\pnft-test`; the API client was seeded by passing `--UmbracoMcp:ClientId`/`ClientSecret`
+  test-only values on the command line): `/PNFT-SQL/*` deleted the rows `/pnft-sql/a`, `/pnft-sql/b.php` and `/pnft-sql`
+  (exact) and kept `/pnft-sqlx`; the table held `/pnft-sql/*` with `DisplayPattern` `/PNFT-SQL/*` and a 64-character hash; the
+  paths answered 410; re-adding as `/pnft-sql/*/` updated the same rule to 403; unblocking restored 404 and tracking from 1.
+- Not checked: `multi-site-hostnames` (needs the hosts file).
+
+**Not verified:** the modal's visual layout (it renders off-screen in the automation pane; fields and messages were driven
+through the DOM), the `recordsRemoved: false` warning toast, the unblock 404/503/network texts (Vitest mapping only), the
+hostnames profile, and the upsert's duplicate-key retry (no seam to inject the race; untested).
+
 ## Tests
 
 - Unit: NUnit + Moq, coverlet. One project per code project with logic.
@@ -912,7 +1107,7 @@ selectable; the provider rejects it with the inline message).
   `.env.example` to `.env` (gitignored). The site must be running on single-site (44401) with
   `Umbraco__Community__PageNotFoundTracker__FlushInterval=00:00:01` (see Dashboard). Umbraco marks
   elements with `data-mark` (configured as `testIdAttribute`). `tests/not-found.spec.ts` covers spec 2,
-  `tests/redirect.spec.ts` the create redirect flow (spec 5), `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
+  `tests/redirect.spec.ts` the create redirect flow (spec 5), `tests/blocked.spec.ts` blocking (spec 6), `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
   smoke test (placeholder dashboard in Settings) is gone with the placeholder.
 
 ## CI and repository settings

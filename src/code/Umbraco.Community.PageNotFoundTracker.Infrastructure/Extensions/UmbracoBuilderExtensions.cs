@@ -67,8 +67,8 @@ internal static class UmbracoBuilderExtensions
     }
 
     /// <summary>
-    /// Registers the block snapshot provider, the rule service, the rule change notifier (a no-op until the cache
-    /// refresher replaces it), the snapshot's startup load and the handlers that rebuild it when Umbraco's domains
+    /// Registers the block snapshot provider, the rule service, the rule change notifier (through Umbraco's distributed
+    /// cache) and its cache refresher, the snapshot's startup load and the handlers that rebuild it when Umbraco's domains
     /// or languages change.
     /// </summary>
     /// <param name="builder">The Umbraco builder.</param>
