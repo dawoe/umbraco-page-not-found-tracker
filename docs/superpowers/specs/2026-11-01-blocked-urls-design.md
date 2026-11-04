@@ -330,8 +330,10 @@ These are the writer's calls, not decisions the user made:
 - **Queued hit discard:** compares the pattern against the hit's `RelativePath`, within the rule's domain and culture
   scope (the hit already carries all three), so no prefix stripping is repeated.
 - **Created by:** not recorded; only the UTC timestamp.
-- **Overlap with Umbraco-owned paths:** rejected when the pattern could match the owned path itself or anything under it
-  (for example `/um*`, `*umbraco*`, `/*/umbraco`). The request-time exclusion of owned paths remains the real protection.
+- **Overlap with Umbraco-owned paths:** rejected when the pattern matches an owned path itself (`/um*`, `*umbraco*`) or
+  its literal prefix lies inside an owned subtree (`/umbraco/x*`). A pattern such as `/*.php` is accepted although it
+  could match `/umbraco/x.php`: rejecting it would forbid the most useful rules, and the request-time exclusion of owned
+  paths is the real protection.
 - **Initial load:** a request waits for the shared initial load for at most 5 seconds (and while persistence is
   `Pending`), then passes through with a warning; the load retries in the background every 30 seconds. With persistence
   `Unavailable` requests pass through immediately.
