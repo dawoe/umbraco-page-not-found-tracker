@@ -22,7 +22,10 @@ public interface IBlockRuleService
     /// <param name="pattern">The pattern as entered (a path with <c>*</c> as wildcard).</param>
     /// <param name="statusCode">The response status code (400 to 499).</param>
     /// <param name="domain">The domain name, empty for all domains.</param>
-    /// <param name="culture">The culture, empty for all cultures.</param>
+    /// <param name="culture">
+    /// The culture, empty for all cultures. Case does not matter: it is stored as the matching Umbraco language ISO code
+    /// (else the .NET culture name, else lower-cased), so <c>en-us</c> and <c>en-US</c> are the same rule.
+    /// </param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The outcome.</returns>
     Task<CreateBlockRuleOutcome> CreateAsync(string pattern, int statusCode, string domain, string culture, CancellationToken cancellationToken);

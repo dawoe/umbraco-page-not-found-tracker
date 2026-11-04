@@ -1,5 +1,6 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using System.Globalization;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -107,7 +108,7 @@ internal sealed class BlockRuleService : IBlockRuleService
         string display = (pattern ?? string.Empty).Trim();
         string normalised = BlockPatternNormalizer.Normalize(display);
         string scopeDomain = (domain ?? string.Empty).Trim().ToLowerInvariant();
-        string scopeCulture = (culture ?? string.Empty).Trim();
+        string scopeCulture = await this.CanonicaliseCultureAsync((culture ?? string.Empty).Trim());
 
         string? message = BlockPatternValidator.Validate(normalised, statusCode)
             ?? ValidateScope(scopeDomain, scopeCulture);
@@ -299,6 +300,39 @@ internal sealed class BlockRuleService : IBlockRuleService
             {
                 throw;
             }
+        }
+    }
+
+    /// <summary>
+    /// Gives a culture one spelling, so the rule identity does not depend on case or on the database collation: the ISO
+    /// code of the Umbraco language it matches (ignoring case), else the .NET culture name, else lower-cased.
+    /// </summary>
+    /// <param name="culture">The trimmed culture; empty means all cultures.</param>
+    /// <returns>The canonical culture.</returns>
+    private async Task<string> CanonicaliseCultureAsync(string culture)
+    {
+        if (culture.Length == 0)
+        {
+            return culture;
+        }
+
+        IEnumerable<ILanguage>? languages = await this.languageService.GetAllAsync();
+        string? isoCode = languages?
+            .Select(l => l.IsoCode)
+            .FirstOrDefault(code => string.Equals(code, culture, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(isoCode))
+        {
+            return isoCode;
+        }
+
+        try
+        {
+            string name = CultureInfo.GetCultureInfo(culture).Name;
+            return string.Equals(name, culture, StringComparison.OrdinalIgnoreCase) ? name : culture.ToLowerInvariant();
+        }
+        catch (CultureNotFoundException)
+        {
+            return culture.ToLowerInvariant();
         }
     }
 

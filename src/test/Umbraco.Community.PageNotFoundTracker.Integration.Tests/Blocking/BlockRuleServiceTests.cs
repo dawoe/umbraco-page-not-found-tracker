@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Umbraco.Cms.Core.Configuration.Models;
+using Umbraco.Cms.Core.Models;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Community.PageNotFoundTracker.Core.Blocking;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
@@ -79,7 +80,8 @@ internal sealed class BlockRuleServiceTests : TrackingDatabaseFixture
             snapshotProvider.Object,
             notifier.Object,
             Mock.Of<IDomainService>(),
-            Mock.Of<ILanguageService>(),
+            Mock.Of<ILanguageService>(l => l.GetAllAsync() == Task.FromResult<IEnumerable<ILanguage>>(
+                new[] { Mock.Of<ILanguage>(x => x.IsoCode == "en-US"), Mock.Of<ILanguage>(x => x.IsoCode == "nl-NL") })),
             TimeProvider.System,
             NullLogger<BlockRuleService>.Instance);
     }
@@ -236,6 +238,26 @@ internal sealed class BlockRuleServiceTests : TrackingDatabaseFixture
             Assert.That(rules[0].StatusCode, Is.EqualTo(403));
             Assert.That(rules[0].DisplayPattern, Is.EqualTo("/Old-Page"));
             Assert.That(rules[0].Pattern, Is.EqualTo("/old-page"));
+        });
+    }
+
+    /// <summary>
+    /// The same culture in another case updates the status of the one rule, on every database.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Same_culture_other_case_updates_one_rule()
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, "en-US", CancellationToken.None);
+        CreateBlockRuleOutcome second = await this.service.CreateAsync("/old", 403, string.Empty, "en-us", CancellationToken.None);
+
+        List<BlockRule> rules = await this.GetRulesAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(second.Status, Is.EqualTo(CreateBlockRuleStatus.Saved));
+            Assert.That(rules, Has.Count.EqualTo(1));
+            Assert.That(rules[0].StatusCode, Is.EqualTo(403));
+            Assert.That(rules[0].Culture, Is.EqualTo("en-US"));
         });
     }
 

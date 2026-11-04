@@ -68,6 +68,7 @@ internal sealed class BlockRuleServiceTests
             });
         this.domainService = new Mock<IDomainService>();
         this.languageService = new Mock<ILanguageService>();
+        this.languageService.Setup(l => l.GetAllAsync()).ReturnsAsync([Language("en-US"), Language("nl-NL")]);
         this.queue = new TrackingQueue(
             Options.Create(new PageNotFoundTrackerSettings()),
             new FakeTimeProvider(new DateTimeOffset(T0)),
@@ -205,6 +206,44 @@ internal sealed class BlockRuleServiceTests
             Assert.That(rules, Has.Count.EqualTo(1));
             Assert.That(rules[0].StatusCode, Is.EqualTo(403));
             Assert.That(rules[0].DisplayPattern, Is.EqualTo("/Old-Page/"));
+        });
+    }
+
+    /// <summary>
+    /// The culture is stored in one spelling: the Umbraco language's ISO code ignoring case, else the .NET culture name,
+    /// else lower-cased.
+    /// </summary>
+    /// <param name="given">The culture as passed.</param>
+    /// <param name="stored">The culture as stored.</param>
+    /// <returns>A task.</returns>
+    [TestCase("en-us", "en-US")]
+    [TestCase(" NL-nl ", "nl-NL")]
+    [TestCase("fr-fr", "fr-FR")]
+    [TestCase("Not-A-Culture-X", "not-a-culture-x")]
+    [TestCase("", "")]
+    public async Task Culture_is_canonicalised(string given, string stored)
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, given, CancellationToken.None);
+
+        Assert.That((await this.RulesAsync()).Single().Culture, Is.EqualTo(stored));
+    }
+
+    /// <summary>
+    /// The same culture in another case updates the one rule.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Same_culture_other_case_updates_one_rule()
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, "en-US", CancellationToken.None);
+        await this.service.CreateAsync("/old", 403, string.Empty, "EN-us", CancellationToken.None);
+
+        List<BlockRule> rules = await this.RulesAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(rules, Has.Count.EqualTo(1));
+            Assert.That(rules[0].StatusCode, Is.EqualTo(403));
+            Assert.That(rules[0].Culture, Is.EqualTo("en-US"));
         });
     }
 
