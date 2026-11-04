@@ -13,9 +13,13 @@ const MARKS = {
   collection: 'pnft-collection',
   search: 'pnft-search',
   row: 'pnft-row',
+  stateEmpty: 'pnft-state-empty',
+  stateEmptyFiltered: 'pnft-state-empty-filtered',
   blockCollection: 'pnft-block-collection',
   blockSearch: 'pnft-block-search',
   blockRow: 'pnft-block-row',
+  blockStateEmpty: 'pnft-block-state-empty',
+  blockStateEmptyFiltered: 'pnft-block-state-empty-filtered',
   blockModal: 'pnft-block-rule-modal',
   blockPattern: 'pnft-block-pattern',
   blockPatternRequired: 'pnft-block-pattern-required',
@@ -61,15 +65,44 @@ async function openTrackedAndSearch(page: Page, term: string, expectedRows: numb
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000] });
 }
 
-/** Opens the Blocked URLs tab and searches for `term`. */
-async function openBlockedAndSearch(page: Page, term: string): Promise<void> {
+/**
+ * Waits until the blocked list has settled for `term`: every shown rule contains the term, and when there are none
+ * the empty (filtered) state is shown. An unfiltered or still loading list never satisfies this. Returns the patterns.
+ */
+async function settledRulePatterns(page: Page, term: string): Promise<string[]> {
+  let patterns: string[] = [];
+  await expect
+    .poll(
+      async () => {
+        // The pattern is the first titled span of a row (other cells carry titles too).
+        patterns = await ruleRows(page).evaluateAll((els) =>
+          els.map((e) => e.querySelector('span[title]')?.getAttribute('title') ?? ''),
+        );
+        if (patterns.length === 0) {
+          return (
+            (await page.getByTestId(MARKS.blockStateEmptyFiltered).count()) +
+              (await page.getByTestId(MARKS.blockStateEmpty).count()) >
+            0
+          );
+        }
+        return patterns.every((pattern) => pattern.includes(term));
+      },
+      { timeout: 20_000, message: `blocked list settled for "${term}"` },
+    )
+    .toBe(true);
+  return patterns;
+}
+
+/** Opens the Blocked URLs tab, searches for `term` and waits until the list has settled. */
+async function openBlockedAndSearch(page: Page, term: string): Promise<string[]> {
+  let patterns: string[] = [];
   await expect(async () => {
     await page.goto(BLOCKED_PATH);
     await expect(page.getByTestId(MARKS.blockCollection)).toBeVisible({ timeout: 20_000 });
     await page.getByTestId(MARKS.blockSearch).locator('input').fill(term);
-    // Settle: the search reloads the list.
-    await page.waitForTimeout(500);
+    patterns = await settledRulePatterns(page, term);
   }).toPass({ timeout: 90_000, intervals: [1_000, 2_000] });
+  return patterns;
 }
 
 /** Opens the row's actions dropdown (page rows) and clicks Block, or clicks the inline Block button (file rows). */
@@ -87,15 +120,27 @@ async function clickBlock(row: Locator): Promise<void> {
 async function unblockAllMatching(page: Page, term: string): Promise<void> {
   await openBlockedAndSearch(page, term);
   for (let guard = 0; guard < 10; guard++) {
-    await page.waitForTimeout(700);
-    const row = ruleRows(page).first();
+    // Only rows whose pattern contains the term are ever touched, whatever the list shows.
+    const row = ruleRows(page)
+      .filter({ has: page.locator(`span[title*="${term}"]`) })
+      .first();
     if ((await row.count()) === 0) {
+      await settledRulePatterns(page, term);
       return;
     }
+    const id = await row.getAttribute('data-unique');
     await row.getByTestId(UNBLOCK_ACTION).click();
     await page.locator('umb-confirm-modal #confirm').click();
     await expect(page.locator('umb-confirm-modal')).toBeHidden();
+    // Wait for the reload to drop this rule before looking at the list again.
+    await expect(page.locator(`[data-mark="${MARKS.blockRow}"][data-unique="${id}"]`)).toHaveCount(0);
   }
+}
+
+/** Asserts that no rule contains `term` (a loaded, filtered list shows the empty state). */
+async function expectNoRulesMatching(page: Page, term: string): Promise<void> {
+  expect(await openBlockedAndSearch(page, term)).toEqual([]);
+  await expect(ruleRows(page)).toHaveCount(0);
 }
 
 async function statusOf(page: Page, path: string): Promise<{ status: number; body: string }> {
@@ -148,11 +193,12 @@ test.describe('blocked URLs', () => {
 
     // A blocked URL is not tracked again: after a flush wait there is still no tracked row.
     expect((await request.get(path)).status()).toBe(410);
-    await page.waitForTimeout(4_000);
+    await page.waitForTimeout(4_000); // more than the flush interval: a tracked hit would be written by now
     await page.goto(DASHBOARD_PATH);
     await expect(page.getByTestId(MARKS.collection)).toBeVisible({ timeout: 20_000 });
     await page.getByTestId(MARKS.search).locator('input').fill(`${prefix}-block`);
-    await page.waitForTimeout(1_000);
+    // Loaded and filtered: the empty states only show once the list answered for this search.
+    await expect(page.getByTestId(MARKS.stateEmptyFiltered).or(page.getByTestId(MARKS.stateEmpty))).toBeVisible();
     await expect(trackedRows(page)).toHaveCount(0);
 
     await unblockAllMatching(page, `${prefix}-block`);
@@ -189,14 +235,14 @@ test.describe('blocked URLs', () => {
     expect((await statusOf(page, path)).status).toBe(410);
 
     await unblockAllMatching(page, `${prefix}-unblock`);
-    await openBlockedAndSearch(page, `${prefix}-unblock`);
-    await expect(ruleRows(page)).toHaveCount(0);
+    await expectNoRulesMatching(page, `${prefix}-unblock`);
 
     // The URL is a normal missing page again and is tracked with a single hit.
     expect((await request.get(path)).status()).toBe(404);
     await openTrackedAndSearch(page, `${prefix}-unblock`, 1);
     await expect(trackedRowFor(page, path)).toHaveCount(1);
-    await expect(trackedRowFor(page, path)).toContainText(/\b1\b/);
+    // Hits is the 7th cell (url, domain, culture, type, first seen, last seen, hits).
+    await expect(trackedRowFor(page, path).locator('uui-table-cell').nth(6)).toHaveText(/^\s*1\s*$/);
   });
 
   test('Umbraco_owned_pattern_is_rejected_with_a_message', async ({ page }) => {
@@ -208,11 +254,14 @@ test.describe('blocked URLs', () => {
     await page.getByTestId(MARKS.blockConfirm).click();
 
     await expect(page.getByTestId(MARKS.blockError)).toBeVisible();
-    await expect(page.getByTestId(MARKS.blockError)).not.toBeEmpty();
+    await expect(page.getByTestId(MARKS.blockError)).toContainText('/umbraco');
     await expect(page.getByTestId(MARKS.blockModal)).toBeVisible();
 
     await page.getByTestId(MARKS.blockCancel).click();
     await expect(page.getByTestId(MARKS.blockModal)).toBeHidden();
+
+    // Nothing was saved for that pattern.
+    await expectNoRulesMatching(page, 'umbraco/x');
   });
 
   test('a_css_row_can_be_blocked', async ({ page, request }) => {
