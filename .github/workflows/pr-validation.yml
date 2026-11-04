@@ -48,6 +48,10 @@ jobs:
         run: npm ci
         working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
 
+      - name: NPM test
+        run: npm test
+        working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
+
       - name: NPM build
         run: npm run build
         working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
@@ -97,7 +101,12 @@ jobs:
       - name: Create dev certificate
         run: dotnet dev-certs https
 
+      # The dashboard E2E tests send 404s and then wait for them to appear in the dashboard. Tracked hits are
+      # written by a background flush (default every minute), so the site runs with a 1 second flush interval.
+      # The setting is not in launchSettings.json, so this environment variable reaches the site.
       - name: Start test site
+        env:
+          Umbraco__Community__PageNotFoundTracker__FlushInterval: '00:00:01'
         run: |
           nohup dotnet run --no-build -c ${{ env.BUILD_CONFIG }} --launch-profile single-site > "$RUNNER_TEMP/site.log" 2>&1 &
         working-directory: test-sites/Website-V17

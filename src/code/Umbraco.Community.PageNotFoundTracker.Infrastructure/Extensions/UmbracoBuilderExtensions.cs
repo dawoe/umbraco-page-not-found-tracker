@@ -5,8 +5,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Community.PageNotFoundTracker.Core;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
+using Umbraco.Community.PageNotFoundTracker.Core.Dashboard;
 using Umbraco.Community.PageNotFoundTracker.Core.NotFound;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Dashboard;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 using Umbraco.Extensions;
@@ -35,6 +37,10 @@ internal static class UmbracoBuilderExtensions
 
         builder.Services.AddUnique<INotFoundPageResolver, DefaultNotFoundPageResolver>();
         builder.Services.AddUnique<IRequestDomainMatcher, RequestDomainMatcher>();
+
+        builder.Services.AddUnique<IDashboardAccess, DashboardAccess>();
+
+        builder.Services.AddUnique<ITrackedUrlQueryService, TrackedUrlQueryService>();
 
         // TimeProvider is a shared framework service, not ours: keep a registration the site already made.
         builder.Services.TryAddSingleton(TimeProvider.System);

@@ -42,6 +42,14 @@ public sealed class PageNotFoundTrackerSettings
     public int ChannelCapacity { get; set; } = DefaultChannelCapacity;
 
     /// <summary>
+    /// Gets or sets the aliases of the user groups that may use the dashboard. <c>admin</c> and <c>editor</c> when
+    /// nothing is configured (the dashboard access rule applies that default; the list itself starts empty because
+    /// configuration binding appends to an existing list instead of replacing it). The <c>admin</c> group always has
+    /// access. A list with only blank entries falls back to the default with a warning.
+    /// </summary>
+    public IList<string> DashboardUserGroups { get; set; } = [];
+
+    /// <summary>
     /// Gets the flush interval to use: at least one second, and the default when the configured value is not positive.
     /// </summary>
     internal TimeSpan EffectiveFlushInterval

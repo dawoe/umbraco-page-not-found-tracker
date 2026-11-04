@@ -117,17 +117,16 @@ dotnet restore && dotnet build && dotnet test
 The test site databases are committed and contain test-only credentials; restore them with
 `git checkout` after running a profile (details in CLAUDE.md).
 
-The SQL Server integration tests and the `sql-server` launch profile need a SQL Server. With Docker
-(test-only password, never reuse it):
+The `sql-server` launch profile uses a LocalDB instance named `pnft-test` (Windows, no Docker needed):
+`sqllocaldb create pnft-test 15.0 -s`, then `dotnet run --launch-profile sql-server`. To use Docker instead
+(test-only password, never reuse it), start a container and override the connection string, see CLAUDE.md:
 
 ```bash
 docker run -d --name pnft-sqlserver -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=PnftTest-only1!' \
   -p 14330:1433 mcr.microsoft.com/mssql/server:2022-latest
 ```
 
-The `sql-server` profile connects to it with
-`Server=localhost,14330;Database=PageNotFoundTracker;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`.
-For the tests, set `PNFT_SQLSERVER_CONNECTION` to a server-level connection string (no database), for example
+The SQL Server integration tests need a SQL Server too. For the tests, set `PNFT_SQLSERVER_CONNECTION` to a server-level connection string (no database), for example
 `Server=localhost,14330;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`; without it the SQL
 Server tests are skipped. A LocalDB alternative is in CLAUDE.md.
 

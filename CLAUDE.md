@@ -6,19 +6,20 @@ Guidance for Claude Code when working in this repository.
 
 `Umbraco.Community.PageNotFoundTracker` is an Umbraco 17 (LTS, .NET 10) package that records
 requests that end in a 404 and, in later versions, lets editors turn tracked URLs into redirects
-or block them. Built today: the foundation (spec 1: solution, build, test, pack, publish, a
-placeholder backoffice dashboard, a test site that runs in four scenarios), 404 handling
-(spec 2: the configured 404 page is shown for missing pages and missing files) and tracking (spec 3:
-every 404 is counted per URL in a database table, SQLite or SQL Server). Nothing reads the tracked
-data yet: the dashboard, redirects, blocking and implementer documentation (specs 4 to 7) are planned,
-not built. Do not document or promise them as existing.
+or block them. Built today: the foundation (spec 1: solution, build, test, pack, publish, a test site
+that runs in four scenarios), 404 handling (spec 2: the configured 404 page is shown for missing pages
+and missing files), tracking (spec 3: every 404 is counted per URL in a database table, SQLite or SQL
+Server) and the backoffice dashboard (spec 4: a searchable, sortable, filterable, paged list of tracked
+URLs in the Content section, served by the package's own Management API). The dashboard has no row
+actions yet: redirects, blocking and implementer documentation (specs 5 to 7) are planned, not built.
+Do not document or promise them as existing.
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
 
 1. Solution setup: `docs/superpowers/specs/2026-11-01-solution-setup-design.md` (done)
 2. 404 handling for pages and files: `docs/superpowers/specs/2026-11-01-not-found-handling-design.md` (done)
 3. Tracking of 404 URLs: `docs/superpowers/specs/2026-11-01-tracking-design.md` (done)
-4. Backoffice dashboard: `docs/superpowers/specs/2026-11-01-dashboard-design.md`
+4. Backoffice dashboard: `docs/superpowers/specs/2026-11-01-dashboard-design.md` (done)
 5. Redirect creation: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md`
 6. Blocked URLs: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md`
 7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md`
@@ -28,6 +29,7 @@ Plans (`docs/superpowers/plans/`):
 - Solution setup: `docs/superpowers/plans/2026-11-01-solution-setup.md`
 - 404 handling: `docs/superpowers/plans/2026-11-02-not-found-handling.md`
 - Tracking: `docs/superpowers/plans/2026-11-03-tracking.md`
+- Dashboard: `docs/superpowers/plans/2026-11-03-dashboard.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -41,23 +43,28 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
   Holds `UsePageNotFoundTracker()` (`Extensions/WebApplicationExtensions.cs`)
 - `src/code/Umbraco.Community.PageNotFoundTracker.Core/` — settings, models, interfaces only
 - `src/code/Umbraco.Community.PageNotFoundTracker.Infrastructure/` — composer, middleware,
-  services, the tracking `DbContext`, queue, flush and migration services
+  services, the tracking `DbContext`, queue, flush and migration services, the dashboard access rule
+  and the tracked URL query service
 - `src/code/Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite/` and `.Persistence.SqlServer/` —
   tracking database providers, each with its own EF Core `Migrations/` and a design-time factory
   (`IsPackable=false`, bundled into the entry package)
-- `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice/` — Razor class library, later the
-  Management API. Its `wwwroot/App_Plugins/PageNotFoundTracker` is the client build output (gitignored)
+- `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice/` — Razor class library with the
+  Management API (controllers, response models, the dashboard access policy, the OpenAPI document). Its
+  `wwwroot/App_Plugins/PageNotFoundTracker` is the client build output (gitignored)
 - `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client/` — backoffice client
-  (TypeScript, Lit, Vite). Placeholder dashboard in `src/dashboards/placeholder/`
+  (TypeScript, Lit, Vite, Vitest): the generated API client (`src/api/`), the tracked URL collection
+  (`src/collection/`), the dashboard (`src/dashboards/tracked-urls/`), the access condition
+  (`src/conditions/`) and the English texts (`src/localization/`). The spec 1 placeholder dashboard is gone
 - `src/test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests/` and `.BackOffice.Tests/` —
   NUnit + Moq unit tests
 - `src/test/Umbraco.Community.PageNotFoundTracker.Integration.Tests/` — Umbraco integration tests
   (boots Umbraco on SQLite with the package composed in; tracking database tests on SQLite and SQL Server)
-- `src/test/Umbraco.Community.PageNotFoundTracker.E2E/` — Playwright tests
+- `src/test/Umbraco.Community.PageNotFoundTracker.E2E/` — Playwright tests (`tests/not-found.spec.ts`,
+  `tests/dashboard.spec.ts`)
 - `test-sites/Website-V17/` — Umbraco 17 test site (Clean starter kit), project-references the
-  entry package and both persistence projects (the entry project references them `PrivateAssets=all` and never
-  uses them in code, so a project-referencing site would not get their dlls and tracking would be off); in the
-  solution, never packed (`IsPackable=false`)
+  entry package, both persistence projects and BackOffice (the entry project references them `PrivateAssets=all`
+  and never uses them in code, so a project-referencing site would not get their dlls: tracking would be off and
+  the Management API missing); in the solution, never packed (`IsPackable=false`)
 - `scripts/` — `add-migration.ps1` and `check-pending-model-changes.ps1` (tracking migrations);
   `.config/dotnet-tools.json` pins `dotnet-ef` 10.0.12 (the scripts run `dotnet tool restore`)
 - `src/assets/` — NuGet readme (`readme.md`) and icon (`logo.png`)
@@ -74,6 +81,7 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
 # Client (must run before dotnet build so App_Plugins exists)
 cd src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
 npm ci
+npm test        # Vitest, pure client logic (query mapping, states, filter choices, columns, access check)
 npm run build
 
 # .NET (all test projects: unit + integration)
@@ -94,7 +102,9 @@ pwsh .github/scripts/check-package.ps1 -PackageDirectory <output dir>   # run fr
 cd test-sites/Website-V17
 dotnet run --launch-profile single-site
 
-# E2E tests (single-site must be running on https://localhost:44401)
+# E2E tests (single-site must be running on https://localhost:44401, started with a short flush
+# interval so the dashboard tests see their 404s quickly; CI does the same):
+#   Umbraco__Community__PageNotFoundTracker__FlushInterval=00:00:01 dotnet run --launch-profile single-site
 cd src/test/Umbraco.Community.PageNotFoundTracker.E2E
 cp .env.example .env                  # test-only values, already correct for single-site
 npm ci && npx playwright install chromium
@@ -110,7 +120,8 @@ Packing facts:
   `staticwebassets/App_Plugins/PageNotFoundTracker/*`. Only the entry project is packable.
 - Pack fails loudly (`EnsureClientBundleBuiltBeforePack`) when the client bundle is missing: run
   the client build first. `check-package.ps1` additionally asserts exactly one nupkg and the seven
-  key files (six dlls and `entry-point.js`).
+  key files (six dlls and `entry-point.js`), and fails when any file of the client bundle (source maps
+  included) contains `localhost` (no dev-machine server URL may ship, see Dashboard).
 - The sibling projects are `PrivateAssets=all`, so their package references do not flow
   transitively. A new `PackageReference` in any sibling project (Core, Infrastructure, BackOffice, a
   persistence project) must be mirrored in the entry csproj (as `Umbraco.Cms.Api.Management` and `Umbraco.Cms.Persistence.EFCore` are) or
@@ -124,6 +135,11 @@ Packing facts:
   Without the `ContentRoot` metadata the asset paths point at the entry project's own (non-existent) `wwwroot`
   and the site crashes on start; with `CopyToPublishDirectory=Never` the assets become Build-only and pack
   silently drops them; a `StaticWebAssetDiscoveryPattern` alone defines no assets, so nothing is packed.
+- Controllers in the sibling dlls are found by a NuGet consumer without extra code: the consumer's build generates an
+  `ApplicationPart` attribute for every package dll that references MVC. Checked once (spec 4) with a minimal Umbraco
+  17.8 site that referenced the packed nupkg: the attributes listed BackOffice, the API routes answered 401 (not 404)
+  anonymously, and the swagger document and `entry-point.js` were served. Build such a check site under a short path
+  (the long-path gotcha below drops package dlls from `ReferencePath` silently).
 - Verify pack changes in a fresh clone: a stale `staticwebassets.pack.json` in `obj/` can hide a broken setup.
 
 ## Launch profiles
@@ -139,7 +155,7 @@ can run side by side. Run with `dotnet run --launch-profile <name>` from `test-s
 | `multi-site-aliases` | Two sites told apart by path (Site A, Site B) | 44402 / 44302 | `https://localhost:44402/siteA/...`, `/siteB/...` | `multi-site-aliases.sqlite.db` |
 | `multi-language` | One site, en-US (default), nl-NL, fr-FR | 44403 / 44303 | `https://localhost:44403/en`, `/nl`, `/fr` | `multi-language.sqlite.db` |
 | `multi-site-hostnames` | Two sites told apart by hostname | 44404 / 44304 | `https://www.siteA.local:44404/`, `https://www.siteB.local:44404/` | `multi-site-hostnames.sqlite.db` |
-| `sql-server` | One site, one language, SQL Server | 44405 / 44305 | `https://localhost:44405/` | SQL Server `PageNotFoundTracker` on `localhost,14330` (not committed) |
+| `sql-server` | One site, one language, SQL Server | 44405 / 44305 | `https://localhost:44405/` | SQL Server `PageNotFoundTracker` on LocalDB `(localdb)\pnft-test` (not committed) |
 
 Backoffice: `https://localhost:<port>/umbraco`, login `admin@example.com` / `1234567890`
 (unattended install creates this user; login is by email).
@@ -191,30 +207,35 @@ that resolves to this machine. To use it:
 
 ### SQL Server profile setup
 
-`sql-server` proves the package on SQL Server (tracking, migrations). Its connection string is
-`Server=localhost,14330;Database=PageNotFoundTracker;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`
-(provider `Microsoft.Data.SqlClient`; test-only values, never reuse them). It has no MCP user, no committed database
-and no scenario content beyond what the Clean install creates (tracking needs no 404 page). Start SQL Server in Docker:
-
-```bash
-docker run -d --name pnft-sqlserver -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=PnftTest-only1!' \
-  -p 14330:1433 mcr.microsoft.com/mssql/server:2022-latest
-```
-
-Then `dotnet run --launch-profile sql-server`. The first start logs "Cannot open database" / "database not available"
-errors until the unattended install creates the `PageNotFoundTracker` database (it does, with the `sa` login), installs
-Umbraco and Clean; then the package migrates its tables. Reset with `docker rm -f pnft-sqlserver`.
-
-Without Docker, run against a LocalDB instance instead. `launchSettings.json` environment variables override shell
-variables in `dotnet run`, so override the connection string with a command-line argument (highest configuration
-precedence) rather than `$env:`:
+`sql-server` proves the package on SQL Server (tracking, migrations). The profile uses a LocalDB named instance, so it
+needs no Docker (Windows only: `Integrated Security`). Its connection string is
+`Server=(localdb)\pnft-test;Database=PageNotFoundTracker;Integrated Security=True;TrustServerCertificate=True`
+(provider `Microsoft.Data.SqlClient`). It has no MCP user, no committed database and no scenario content beyond what
+the Clean install creates (tracking needs no 404 page). Create the instance once, then run the profile:
 
 ```powershell
 sqllocaldb versions                      # pick a version Microsoft.Data.SqlClient can start (see below)
-sqllocaldb create pnft-test 15.0 -s      # -s also starts it
-dotnet run --launch-profile sql-server -- "--ConnectionStrings:umbracoDbDSN=Server=(localdb)\pnft-test;Database=PageNotFoundTracker;Integrated Security=True;TrustServerCertificate=True"
+sqllocaldb create pnft-test 15.0 -s      # -s also starts it; an existing instance starts on first connect
+dotnet run --launch-profile sql-server
 # afterwards: sqlcmd -S "(localdb)\pnft-test" -Q "ALTER DATABASE [PageNotFoundTracker] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [PageNotFoundTracker]"
 ```
+
+The first start logs "Cannot open database" / "database not available" errors until the unattended install creates the
+`PageNotFoundTracker` database, installs Umbraco and Clean; then the package migrates its tables. If the log instead
+shows "TCP Provider ... timed out" the profile is pointing at a SQL Server that is not running (an old Docker connection
+string): check the connection string in `launchSettings.json`.
+
+To use a SQL Server in Docker (or on Linux/macOS) instead, start it and override the connection string with a
+command-line argument. `launchSettings.json` environment variables override shell variables in `dotnet run`, so a
+command-line argument (highest configuration precedence) is the way, not `$env:`:
+
+```bash
+docker run -d --name pnft-sqlserver -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=PnftTest-only1!' \
+  -p 14330:1433 mcr.microsoft.com/mssql/server:2022-latest   # test-only password, never reuse it
+dotnet run --launch-profile sql-server -- "--ConnectionStrings:umbracoDbDSN=Server=localhost,14330;Database=PageNotFoundTracker;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True"
+```
+
+Reset the container with `docker rm -f pnft-sqlserver`.
 
 Pin the LocalDB version. Without it `sqllocaldb create` uses the newest installed version. On a machine with
 LocalDB 2019 (15.0) and 2025 (17.0) installed, an instance created with 17.0 accepted `sqlcmd` connections, but the site
@@ -225,8 +246,8 @@ instance's version. The same applies to the instance used for `PNFT_SQLSERVER_CO
 Use a named instance, not the shared `MSSQLLocalDB` or a full local SQL Server. Running the profile still rewrites
 `appsettings.json` (HMAC key): restore it with `git checkout`.
 
-Only `single-site` is verified in CI. The other profiles were verified manually (`sql-server` against LocalDB through
-the override above, not against the Docker container).
+Only `single-site` is verified in CI. The other profiles were verified manually (`sql-server` against LocalDB, the
+profile default; not against the Docker container).
 
 ## Committed databases (read this before running a profile)
 
@@ -456,6 +477,7 @@ a change needs a restart):
 | `FlushInterval` | `00:01:00` | Minimum 1 s; zero or negative means the default (`EffectiveFlushInterval`). |
 | `IncludeQueryString` | `false` | On: the query string is part of the identity (parameter order not normalised). |
 | `ChannelCapacity` | `10000` | Queue size and the bound of the pending (merge + retry) buffer; below 1 means the default. |
+| `DashboardUserGroups` | empty (= `admin`, `editor`) | User group aliases that may use the dashboard and its API; `admin` always passes. See Dashboard (spec 4). |
 
 **Flow.** Both 404 call points (spec 2) call `INotFoundRecorder`; `NotFoundTracker` (internal, `AddUnique`)
 normalises the occurrence with `TrackedUrlNormalizer` and writes it to `TrackingQueue` without awaiting and without
@@ -491,7 +513,7 @@ SQL Server; `TrackedUrlHit.Count` is `long` too, so merged counts cannot overflo
 
 **Startup gate.** `TrackingMigrationService` waits for `RuntimeLevel.Run` (so after Umbraco's own unattended
 install), selects the provider for Umbraco's provider name and runs `Database.MigrateAsync`. `ITrackingPersistenceState`
-(Core, public) reports `Pending` / `Available` / `Unavailable`, with `WaitUntilReadyAsync` for later specs. No matching
+(Core, public) reports `Pending` / `Available` / `Unavailable`, with `WaitUntilReadyAsync` (the Management API uses it). No matching
 provider: one log naming the provider (error, or warning when `TrackingEnabled` is off since nothing is lost),
 `Unavailable`, the site keeps serving. A failed migration: error log, `Unavailable` (no retry in that run). Hits
 arriving while `Pending` are queued and flushed once the gate opens; when the state becomes `Unavailable` the queue
@@ -564,6 +586,159 @@ CI configuration cannot pass with SQL Server coverage silently skipped. Leave it
 **Test site.** Running a SQLite profile creates the tracking tables in its committed database and fills them; never
 commit that (restore with `git checkout`, see Committed databases). Committed databases hold no tracking tables or rows.
 
+## Dashboard (spec 4)
+
+A dashboard "Page not found" in the Content section (`/umbraco/section/content/dashboard/page-not-found-tracker`) lists
+the tracked URLs: URL, domain, culture, type (page or file), first seen, last seen, hits; default order hits descending.
+Search by URL, domain and culture filters, page size 20 (default), 50 or 100, every column sortable. Not live: users
+reload (or change a filter) to see new data. No row actions yet (specs 5 and 6 add them, see below). States: loading,
+empty (nothing tracked), empty after filtering, error, and unavailable (503: database unsupported or migrations failed;
+final for the process, needs a fix and a restart).
+
+**Access setting.** `DashboardUserGroups` (`PageNotFoundTrackerSettings`, a list of user group aliases, e.g.
+`"DashboardUserGroups": ["admin", "editor", "writer"]` or `...__DashboardUserGroups__0=writer`). The settings default is an
+**empty** list and `DashboardAccess` (Infrastructure, `IDashboardAccess` in Core, `AddUnique`) applies `admin` and `editor`
+when nothing usable is configured: the configuration binder appends configured items to a pre-filled list, so a non-empty
+default could never be narrowed. Rules: `admin` always passes (a bad setting cannot lock out the person who fixes it);
+matching is case-insensitive and trims; a user in any one listed group passes; an empty configured array is the same as
+absent (defaults, no warning); null or blank-only entries fall back to the defaults with one warning. Computed once at
+startup (a change needs a restart). Group aliases are the role claims (`ClaimTypes.Role`) on the backoffice token. The
+dashboard is registered for the Content section only, so an allowed user without Content access still does not see it.
+
+**Management API** (BackOffice project, `AddPageNotFoundTrackerManagementApi()` from `BackOfficeComposer`). Routes under
+`/umbraco/pagenotfoundtracker/api/v1` (`[BackOfficeRoute("pagenotfoundtracker/api/v{version:apiVersion}")]`, not
+Umbraco's `/management/api`), controllers derive `TrackedUrlsControllerBase : ManagementApiControllerBase`, OpenAPI tag
+`Tracked URL`:
+
+| Operation ID | Route | Auth | Answers |
+|---|---|---|---|
+| `GetTrackedUrls` | `GET tracked-urls` | policy | 200 `PagedViewModel<TrackedUrlResponseModel>` (`total`, `items`); 400; 503 |
+| `GetTrackedUrlFilterOptions` | `GET tracked-urls/filter-options` | policy | 200 `{ domains, cultures, hasEmptyDomain, hasEmptyCulture }`; 503 |
+| `GetDashboardAccess` | `GET access` | any backoffice user | 200 `{ allowed }` |
+
+- Anonymous gets 401 (the base controller's `BackOfficeAccess`); a user outside the groups gets 403 from the policy
+  `PageNotFoundTracker.DashboardAccess` (`Constants.DashboardAccessPolicy`: the OpenIddict validation scheme plus
+  `DashboardAccessRequirement`, evaluated by `DashboardAccessHandler` with `IDashboardAccess`). 503 problem details when
+  persistence is `Unavailable`; while `Pending` the request waits (`WaitUntilReadyAsync`). Validation (400) runs first.
+- `GET access` exists because the backoffice client cannot evaluate the setting itself: the dashboard condition asks the
+  server, so the UI and the API share one rule. It is not a security boundary; the policy on the data endpoints is.
+- `GetTrackedUrls` query: `skip` (default 0, `< 0` is 400), `take` (default 20, outside 1 to 100 is 400; the query service
+  clamps to 1 to 100 as well), `orderBy` (`Hits` default, `Url`, `Domain`, `Culture`, `IsFile`, `FirstSeen`, `LastSeen`;
+  string enum, an unknown name is 400), `direction` (`Ascending`/`Descending` default), `search`, `domain`, `noDomain`,
+  `culture`, `noCulture`. `domain=x` is an exact match; `noDomain=true` means "no domain" (rows with an empty `Domain`);
+  both together is 400; an empty `domain=` binds to null, so it means no filter. Culture the same.
+- Items: `id`, `url` (the `DisplayUrl`), `relativePath` (not a column, for row actions), `domain`, `culture`, `isFile`,
+  `hitCount`, `firstSeen`, `lastSeen` (UTC ISO 8601 with `Z`; SQLite returns an unspecified kind, the controller sets UTC).
+- Search: whitespace-only means no search; a non-blank term is **not** trimmed (`" about"` is literal). The term is
+  percent-decoded once (a malformed escape stays as typed), lower-cased and given the normaliser's slash rules (runs of
+  `/` collapsed to one, one trailing `/` dropped, a lone `/` kept), so a URL copied from the table as displayed
+  (`/Old-Page/`) finds the stored `/old-page`; then `%`, `_`, `[` and `\` are escaped (`LikePattern`, escape `\`) and a
+  "contains" `LIKE` runs on the stored, normalised, lower-cased `Url`. So it is case-insensitive without depending on
+  collation, and it covers only the stored part of a URL truncated at 2000 characters. Search does not look at domain or
+  culture. Known limitation (not fixed): with `IncludeQueryString` on, the stored query part is lower-cased but not
+  percent-decoded while the search term is decoded, so a term with an encoded character in the query part does not
+  match itself.
+- Sorting: every order ends with ascending `Id` as tie-break, so paging is stable. `Url`/`Domain`/`Culture` ordering and
+  the exact `domain`/`culture` filters follow the database collation (SQLite binary, SQL Server's default case-insensitive,
+  which for example sorts `/missing.css` before `/missing-page`); the filter options are sorted in memory (ordinal). Count and page are two queries; everything runs in the database.
+- `TrackedUrlQueryService` (Infrastructure, `ITrackedUrlQueryService` in Core, `AddUnique`) takes `IServiceProvider` and
+  resolves `IDbContextFactory<PageNotFoundTrackerDbContext>` per call: the pooled factory runs its options action on
+  first resolve, which must happen after the persistence gate opened, so an early API request must not resolve it.
+- Operation IDs are the action method names (`TrackedUrlsOperationIdHandler`; Umbraco's own handler only covers
+  `Umbraco.Cms.Api*`). Renaming an action method changes the generated client function name.
+
+**OpenAPI and the generated client.** Document name `page-not-found-tracker-management-api` (`Constants.ApiName`), served
+at `/umbraco/swagger/page-not-found-tracker-management-api/swagger.json` when the environment is not Production, with
+Umbraco's `Backoffice-User` security on every operation. The client (`@hey-api/openapi-ts` 0.99, `openapi-ts.config.ts`
+in the client project root, flat SDK functions, `throwOnError: true` so Umbraco's `tryExecute` gets a rejected promise)
+is committed in `src/api/`. Regenerate after an API change:
+
+```bash
+# single-site running on 44401 (any running site works with OPENAPI_URL=<its swagger.json URL>)
+cd src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
+NODE_TLS_REJECT_UNAUTHORIZED=0 npm run generate-client   # self-signed dev cert: local dev only, never anywhere real
+```
+
+Never commit the swagger file and never a base URL: the config sets `baseUrl: false` and patches `servers: [{ url: '/' }]`
+into the document (otherwise the generator writes the fetch origin into `types.gen.ts`). `entry.ts` configures the
+client at runtime with `UMB_AUTH_CONTEXT`'s `configureClient(client)` (server URL, credentials, bearer token with
+refresh, Umbraco's interceptors), then `markClientConfigured()` (`api/client-ready.ts`) releases code that waits for it.
+`check-package.ps1` fails the pack check if `localhost` appears anywhere in the client bundle.
+
+**Client setup** (`src/code/...BackOffice.Client/src/`):
+
+- Dashboard `Umbraco.Community.PageNotFoundTracker.Dashboard.TrackedUrls` (pathname `page-not-found-tracker`, label
+  `#pageNotFoundTracker_dashboardLabel`, weight 5 = after Umbraco's Content dashboards), conditions
+  `Umb.Condition.SectionAlias` = `Umb.Section.Content` and `Pnft.Condition.DashboardAccess`. Its element hosts
+  `<umb-collection alias="Pnft.Collection.TrackedUrl">` (17.8 has a collection kind only for workspace views). No icon:
+  17.8 dashboards have none (`MetaDashboard` is label and pathname only).
+- The condition calls `GET access` after the client is configured; concurrent instances share the request and a
+  successful answer (also `allowed: false`) is cached for the page load. It fails closed: an error (rejection, error
+  status, missing body) means not permitted, but is not cached, so the next condition instance asks again.
+- Collection aliases: collection `Pnft.Collection.TrackedUrl`, repository `Pnft.Repository.TrackedUrl`, view
+  `Pnft.CollectionView.TrackedUrl.Table` (the only view), search box `Pnft.CollectionTextFilter.TrackedUrl`
+  (`collectionTextFilter`, kind `default`; the framework's `filter` is mapped to the API's `search` in `query.ts`).
+- Custom pieces, because the 17.8 framework lacks them: a `collectionView` element on `UmbCollectionViewElementBase` +
+  `umb-table` (the 17.8 `table` kind cannot sort and renders plain values), and `PnftTrackedUrlCollectionContext`
+  extending `UmbDefaultCollectionContext` (keeps the repository error for the error and unavailable states, resets to
+  page 1 on sort/search/filter/page size, page size 20 instead of 50, `setPageSize`, `requestFilterOptions`). The context
+  subclass overrides protected 17.8 internals and copies `collection-default.context.js` logic; the header `data-mark`s
+  pass a Lit template as the column name. **Re-check both on every Umbraco upgrade.** Its token
+  `PNFT_TRACKED_URL_COLLECTION_CONTEXT` sits on the framework alias with a discriminator.
+- "No domain"/"No culture" are the `PNFT_EMPTY` marker (`collection/types.ts`, the string `'\u0000empty'`), mapped to
+  `noDomain=true`/`noCulture=true`; undefined or `''` means all. It must be a string: Umbraco's `UmbDeepState` only emits
+  when `JSON.stringify` of the value changes, and a symbol serialises like "All", so the change was invisible to
+  observers. The leading U+0000 never occurs in a domain name or culture code, so a real value named `empty` or `all` is
+  still sent as a value. Select option values are `all`, `empty` and `v:<value>`.
+- `data-mark` hooks: `collection/data-marks.ts` (`pnft-collection`, `pnft-search`, `pnft-filter-domain`,
+  `pnft-filter-culture`, `pnft-page-size`, `pnft-row` with `data-unique`, `pnft-total`, the five `pnft-state-*`, and
+  `pnft-sort-<column>`). The E2E tests keep a copy: change both together.
+- Texts in `localization/en.ts`, keys `pageNotFoundTracker_*`. The data source passes `disableNotifications: true`, so
+  failures show inline states, not toasts. After `npm run build` while a site runs, new hashed chunks 404 until restart.
+- The filter choices load once when the filter element connects; switching dashboard tabs keeps the element, so new
+  domains or cultures appear after a page reload (the list itself reloads).
+- The tab appears only after the `GET access` answer. In the manual checks a cold deep link (and once the first click on
+  the tab) sometimes kept showing the Welcome dashboard under the dashboard's URL; a second click rendered it (the E2E
+  helper reloads until the collection shows). Not diagnosed further (seen in a background browser pane).
+
+**Adding a row action (specs 5 and 6).** Umbraco 17 has no `entityType` manifest: the entity type is the constant
+`PNFT_TRACKED_URL_ENTITY_TYPE = 'page-not-found-tracker-url'` (`src/entity.ts`). Every table row gets an
+`UmbEntityContext` with that entity type and `unique = String(id)`, and the table already has the framework's entity
+actions column (`umb-entity-actions-table-column-view`, last column, hidden when the collection hides item actions).
+So an action is only a manifest:
+
+```ts
+{
+  type: 'entityAction',
+  kind: 'default',
+  alias: 'Pnft.EntityAction.TrackedUrl.CreateRedirect',
+  name: 'Page Not Found Tracker Create Redirect Entity Action',
+  forEntityTypes: [PNFT_TRACKED_URL_ENTITY_TYPE], // 'page-not-found-tracker-url'
+  api: () => import('./create-redirect.action.js'), // extends UmbEntityActionBase
+  meta: { icon: 'icon-arrow-right', label: '#pageNotFoundTracker_createRedirect' },
+}
+```
+
+The action's `args` carry only `entityType` and `unique` (the id as a string). The other row fields
+(`PnftTrackedUrlCollectionModel`: `id`, `url`, `relativePath`, `domain`, `culture`, `isFile`, `hitCount`, `firstSeen`,
+`lastSeen`) are not passed: read the item with that `unique` from the collection context's items
+(`PNFT_TRACKED_URL_COLLECTION_CONTEXT`), or fetch it from the API. `relativePath` (the URL without the domain's own path)
+is there for redirects and blocking. After a change, call the context's `loadCollection()` to refresh. No action was
+registered in spec 4, so the column has never rendered a real action: verify the first one in the browser.
+
+**Tests.** Unit (`DashboardAccessTests`, `LikePatternTests`, `TrackedUrlsControllerTests`, `DashboardAccessHandlerTests`)
+and Vitest for client logic. `TrackedUrlQueryServiceTests` (Integration) run the query service on SQLite and, with
+`PNFT_SQLSERVER_CONNECTION`, on SQL Server: every sort column in both directions, search edge cases, filters, paging,
+ties. `TrackedUrlsApiTests` (Integration, real backoffice tokens) cover 200/400/401/403, filter options, `access` and the
+OpenAPI document, on SQLite only, because Umbraco's test host boots only on SQLite; it adds the BackOffice assembly as an
+MVC application part (`CustomMvcSetup`), since the test server's entry assembly is Umbraco's. SQL Server is proven by
+the query-service tests plus a manual run of the `sql-server` profile. E2E (`tests/dashboard.spec.ts`, single-site) sends
+real 404s under a run-scoped prefix (`/pnft-e2e-<Date.now()>-...`, plus 22 `/pnft-e2e-pager-<run>-NN` URLs for page 2),
+so reruns on the same database work, and needs `FlushInterval=00:00:01` (it retries with reloads for up to 90 s). The
+pager checks depend on the English `uui-pagination` texts ("Pagination navigation. Current page: N.", "Go to page N"):
+re-check on an Umbraco/UUI upgrade. The domain and culture filters are checked manually on the multi-site and
+multi-language profiles (single-site has no domains).
+
 ## Tests
 
 - Unit: NUnit + Moq, coverlet. One project per code project with logic.
@@ -572,13 +747,16 @@ commit that (restore with `git checkout`, see Committed databases). Committed da
   `GlobalSetup.cs` in the global namespace. NUnit is pinned to 3.14.0 with `VersionOverride` in that
   project only (AutoFixture.NUnit3 needs NUnit 3.x); the central `Moq` 4.21.0 and
   `Microsoft.NET.Test.Sdk` 18.10.1 are what that package requires. Do not lower them.
+- Client: Vitest (`npm test` in the client project, `*.test.ts` next to the code) for pure logic only; the
+  collection elements and the context subclass are covered by E2E and manual checks. CI runs it before the client build.
 - E2E: `@umbraco/playwright-testhelpers` 17.0.36, the correct helper for Umbraco 17 (the Umbraco 18
   helper is `@umbraco-cms/acceptance-test-helpers`; the API is the same, only the import differs).
   `tslib` is an explicit dev dependency because the helper needs it without declaring it. Copy
-  `.env.example` to `.env` (gitignored). The site must be running on single-site (44401). Umbraco marks
-  elements with `data-mark` (configured as `testIdAttribute`). The smoke test asserts the placeholder
-  dashboard element `data-mark="page-not-found-tracker-placeholder"` at
-  `/umbraco/section/settings/dashboard/page-not-found-tracker`.
+  `.env.example` to `.env` (gitignored). The site must be running on single-site (44401) with
+  `Umbraco__Community__PageNotFoundTracker__FlushInterval=00:00:01` (see Dashboard). Umbraco marks
+  elements with `data-mark` (configured as `testIdAttribute`). `tests/not-found.spec.ts` covers spec 2,
+  `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
+  smoke test (placeholder dashboard in Settings) is gone with the placeholder.
 
 ## CI and repository settings
 
@@ -587,9 +765,11 @@ commit that (restore with `git checkout`, see Committed databases). Committed da
   after the build and set `PNFT_SQLSERVER_CONNECTION=Server=localhost,1433;User Id=sa;Password=PnftTest-only1!;TrustServerCertificate=True`
   and `PNFT_REQUIRE_SQLSERVER=true` on the test step (test-only values, literal because service settings cannot read the `env` context). Keep the three
   in step. The service container is unverified until the first CI run.
-- `pr-validation.yml` (PRs to `develop`): client build, restore, build, test with coverage, pack and
-  `check-package.ps1`, then E2E against `single-site` (dev cert without trust, `curl -k` wait loop).
-  The Linux dev-cert/E2E step is unverified until the first PR run.
+- All three workflows run the client `npm test` (Vitest) between `npm ci` and `npm run build`.
+- `pr-validation.yml` (PRs to `develop`): client test and build, restore, build, test with coverage, pack and
+  `check-package.ps1`, then E2E against `single-site` (dev cert without trust, `curl -k` wait loop). The "Start
+  test site" step sets `Umbraco__Community__PageNotFoundTracker__FlushInterval: '00:00:01'` for the dashboard tests.
+  The Linux dev-cert/E2E step and that step env are unverified until the first PR run.
 - `beta-release.yml` (push to `develop`): unit + integration tests, pack with
   `--version-suffix beta-<run number>`, push to MyGet feed `dawoe-umbraco`.
 - `release.yml` (manual `workflow_dispatch`, runs only from `main`): build, test, pack, publish to

@@ -1,6 +1,6 @@
 # Spec 4: Backoffice dashboard for tracked URLs
 
-Status: draft, awaiting builder check and approval
+Status: done
 Depends on: spec 1 (solution setup), spec 3 (tracking)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 
@@ -192,6 +192,7 @@ These are the writer's calls, not decisions the user made:
   formats them in the user's locale and timezone, and sorting uses the raw values.
 - Relative path (added after the cross-spec review): list items also carry the `RelativePath`
   from spec 3, which row actions in specs 5 and 6 use. It is not a column.
+- The real dashboard replaces the spec 1 placeholder (Settings section): its manifest, element and the E2E smoke test are removed or moved to the new dashboard in the Content section.
 - When persistence is unavailable (spec 3), the dashboard shows a readable "database
   unsupported or unavailable" state and the endpoints return a clear error.
 
@@ -221,3 +222,16 @@ These are the writer's calls, not decisions the user made:
 - How the access condition checks the user's groups.
 - How the E2E test gets deterministic tracked data.
 - Icon, dashboard name and the English texts.
+
+## Deviations found while building
+
+- No dashboard icon: Umbraco 17.8 dashboards have none (`MetaDashboard` is label and pathname only, the section tab
+  shows only the label).
+- A third endpoint, `GET access`, answers whether the current user is in an allowed group. The client condition uses
+  it, so the UI and the API share one rule; the data endpoints still enforce the policy themselves.
+- The entity type is a constant (`PNFT_TRACKED_URL_ENTITY_TYPE = 'page-not-found-tracker-url'`), not a registered
+  manifest: Umbraco 17 has no `entityType` manifest type. Rows are entities of that type and entity actions target it
+  with `forEntityTypes`.
+- The collection uses a custom collection view (`umb-table` with sortable headers; the 17.8 `table` kind cannot sort)
+  and a context subclass of `UmbDefaultCollectionContext` (error states, page reset, page size 20). Both rely on 17.8
+  internals and must be re-checked on an Umbraco upgrade.
