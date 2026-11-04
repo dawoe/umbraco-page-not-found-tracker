@@ -56,6 +56,8 @@ export interface PnftTrackedUrlCollectionModel {
   firstSeen: string;
   /** UTC, ISO 8601. */
   lastSeen: string;
+  /** Whether the active redirect provider supports this row: the create redirect action shows only then. */
+  canCreateRedirect: boolean;
 }
 
 /** The choices of the domain and culture filters. */

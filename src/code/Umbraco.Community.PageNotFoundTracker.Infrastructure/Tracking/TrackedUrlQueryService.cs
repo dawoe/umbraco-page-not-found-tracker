@@ -59,6 +59,13 @@ internal sealed class TrackedUrlQueryService(IServiceProvider serviceProvider) :
         return new TrackedUrlFilterOptions(domains, cultures, hasEmptyDomain, hasEmptyCulture);
     }
 
+    /// <inheritdoc />
+    public async Task<TrackedUrl?> GetByIdAsync(int id, CancellationToken cancellationToken)
+    {
+        await using PageNotFoundTrackerDbContext dbContext = await this.CreateContextAsync(cancellationToken);
+        return await dbContext.TrackedUrls.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+    }
+
     private async Task<PageNotFoundTrackerDbContext> CreateContextAsync(CancellationToken cancellationToken) =>
         await serviceProvider.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>().CreateDbContextAsync(cancellationToken);
 

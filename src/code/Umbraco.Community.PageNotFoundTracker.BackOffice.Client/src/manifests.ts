@@ -3,6 +3,7 @@ import { manifests as collectionManifests } from "./collection/manifests";
 import { manifests as conditionManifests } from "./conditions/manifests";
 import { manifests as trackedUrlsDashboardManifests } from "./dashboards/tracked-urls/manifests";
 import { manifests as localizationManifests } from "./localization/manifests";
+import { manifests as redirectManifests } from "./redirect/manifests";
 
 export function registerManifest(registry: UmbBackofficeExtensionRegistry) {
   registry.registerMany([
@@ -10,5 +11,6 @@ export function registerManifest(registry: UmbBackofficeExtensionRegistry) {
     ...conditionManifests,
     ...collectionManifests,
     ...trackedUrlsDashboardManifests,
+    ...redirectManifests,
   ]);
 }

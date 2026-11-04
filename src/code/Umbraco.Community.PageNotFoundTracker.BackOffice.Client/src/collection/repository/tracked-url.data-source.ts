@@ -2,9 +2,9 @@ import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
 import { tryExecute } from '@umbraco-cms/backoffice/resources';
 import type { UmbRepositoryResponse } from '@umbraco-cms/backoffice/repository';
 import type { UmbPagedModel } from '@umbraco-cms/backoffice/repository';
-import { getTrackedUrlFilterOptions, getTrackedUrls, type TrackedUrlResponseModel } from '../../api/index.js';
-import { PNFT_TRACKED_URL_ENTITY_TYPE } from '../../entity.js';
+import { getTrackedUrlFilterOptions, getTrackedUrls } from '../../api/index.js';
 import { buildListQuery } from '../query.js';
+import { mapTrackedUrl } from './tracked-url.mapping.js';
 import type { PnftCollectionFilter, PnftTrackedUrlCollectionModel, PnftTrackedUrlFilterOptionsModel } from '../types.js';
 
 /**
@@ -29,7 +29,7 @@ export class PnftTrackedUrlServerDataSource {
       return { error };
     }
 
-    return { data: { items: data.items.map(mapItem), total: data.total } };
+    return { data: { items: data.items.map(mapTrackedUrl), total: data.total } };
   }
 
   /** Gets the choices of the domain and culture filters. */
@@ -49,20 +49,4 @@ export class PnftTrackedUrlServerDataSource {
       },
     };
   }
-}
-
-function mapItem(item: TrackedUrlResponseModel): PnftTrackedUrlCollectionModel {
-  return {
-    entityType: PNFT_TRACKED_URL_ENTITY_TYPE,
-    unique: String(item.id),
-    id: item.id,
-    url: item.url,
-    relativePath: item.relativePath,
-    domain: item.domain,
-    culture: item.culture,
-    isFile: item.isFile,
-    hitCount: item.hitCount,
-    firstSeen: item.firstSeen,
-    lastSeen: item.lastSeen,
-  };
 }

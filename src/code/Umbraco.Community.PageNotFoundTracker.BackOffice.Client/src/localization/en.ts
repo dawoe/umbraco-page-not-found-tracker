@@ -39,5 +39,23 @@ export default {
     unavailableText:
       'The tracking database is not supported by this package or could not be set up when the site started. ' +
       'Nothing is tracked or shown until this is fixed. Check the site log, fix the cause and restart the site.',
+    createRedirect: 'Create redirect',
+    createRedirectHeadline: 'Create redirect',
+    createRedirectConfirm: 'Create redirect',
+    redirectSummaryHeadline: 'Tracked URL',
+    redirectExplanation:
+      "A redirect from this URL to the page you pick is added to Umbraco's redirect URL management. " +
+      'Visitors of this URL are then sent to that page, and the URL is removed from this list.',
+    redirectTarget: 'Redirect to',
+    redirectTargetDescription: 'The page visitors of this URL are sent to.',
+    redirectTargetRequired: 'Pick the page to redirect to.',
+    redirectFailed: 'The redirect could not be created.',
+    redirectNotFound: 'This tracked URL no longer exists. Close this dialog and reload the list.',
+    redirectUnavailable:
+      'The tracking database is unavailable, so the redirect was not created. Check the site log, fix the cause and restart the site.',
+    redirectError: 'The redirect could not be created because the request failed. Check that the site is running and try again.',
+    redirectCreatedHeadline: 'Redirect created',
+    redirectCreated: (url: string) => `${url} now redirects to the chosen page.`,
+    redirectCreatedRecordKept: 'The redirect was created, but the tracked URL could not be removed from the list.',
   },
 } satisfies UmbLocalizationDictionary;

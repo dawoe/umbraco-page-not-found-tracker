@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetDashboardAccessData, GetDashboardAccessErrors, GetDashboardAccessResponses, GetTrackedUrlFilterOptionsData, GetTrackedUrlFilterOptionsErrors, GetTrackedUrlFilterOptionsResponses, GetTrackedUrlsData, GetTrackedUrlsErrors, GetTrackedUrlsResponses } from './types.gen';
+import type { CreateTrackedUrlRedirectData, CreateTrackedUrlRedirectErrors, CreateTrackedUrlRedirectResponses, GetDashboardAccessData, GetDashboardAccessErrors, GetDashboardAccessResponses, GetTrackedUrlFilterOptionsData, GetTrackedUrlFilterOptionsErrors, GetTrackedUrlFilterOptionsResponses, GetTrackedUrlsData, GetTrackedUrlsErrors, GetTrackedUrlsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -28,6 +28,16 @@ export const getTrackedUrls = <ThrowOnError extends boolean = true>(options?: Op
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls',
     ...options
+});
+
+export const createTrackedUrlRedirect = <ThrowOnError extends boolean = true>(options: Options<CreateTrackedUrlRedirectData, ThrowOnError>): RequestResult<CreateTrackedUrlRedirectResponses, CreateTrackedUrlRedirectErrors, ThrowOnError> => (options.client ?? client).post<CreateTrackedUrlRedirectResponses, CreateTrackedUrlRedirectErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/{id}/redirect',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 export const getTrackedUrlFilterOptions = <ThrowOnError extends boolean = true>(options?: Options<GetTrackedUrlFilterOptionsData, ThrowOnError>): RequestResult<GetTrackedUrlFilterOptionsResponses, GetTrackedUrlFilterOptionsErrors, ThrowOnError> => (options?.client ?? client).get<GetTrackedUrlFilterOptionsResponses, GetTrackedUrlFilterOptionsErrors, ThrowOnError>({

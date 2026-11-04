@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Umbraco.Cms.Api.Common.ViewModels.Pagination;
 using Umbraco.Cms.Core;
 using Umbraco.Community.PageNotFoundTracker.BackOffice.Models;
+using Umbraco.Community.PageNotFoundTracker.Core.Redirects;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 
 namespace Umbraco.Community.PageNotFoundTracker.BackOffice.Controllers;
@@ -16,9 +17,10 @@ namespace Umbraco.Community.PageNotFoundTracker.BackOffice.Controllers;
 /// </summary>
 /// <param name="queryService">The tracked URL query service.</param>
 /// <param name="persistenceState">The tracking persistence state.</param>
+/// <param name="redirectProvider">The redirect provider, asked per row whether a redirect can be created.</param>
 [ApiVersion("1.0")]
 [Authorize(Policy = Constants.DashboardAccessPolicy)]
-public sealed class GetTrackedUrlsController(ITrackedUrlQueryService queryService, ITrackingPersistenceState persistenceState)
+public sealed class GetTrackedUrlsController(ITrackedUrlQueryService queryService, ITrackingPersistenceState persistenceState, IRedirectProvider redirectProvider)
     : TrackedUrlsControllerBase
 {
     /// <summary>
@@ -95,14 +97,14 @@ public sealed class GetTrackedUrlsController(ITrackedUrlQueryService queryServic
         return this.Ok(new PagedViewModel<TrackedUrlResponseModel>
         {
             Total = page.Total,
-            Items = page.Items.Select(Map).ToList(),
+            Items = page.Items.Select(this.Map).ToList(),
         });
     }
 
     private static TrackedUrlFilter ToFilter(string? value, bool empty) =>
         empty ? TrackedUrlFilter.Empty : value is null ? TrackedUrlFilter.Any : TrackedUrlFilter.Exactly(value);
 
-    private static TrackedUrlResponseModel Map(TrackedUrl row) => new()
+    private TrackedUrlResponseModel Map(TrackedUrl row) => new()
     {
         Id = row.Id,
         Url = row.DisplayUrl,
@@ -110,6 +112,7 @@ public sealed class GetTrackedUrlsController(ITrackedUrlQueryService queryServic
         Domain = row.Domain,
         Culture = row.Culture,
         IsFile = row.IsFile,
+        CanCreateRedirect = redirectProvider.CanHandle(row),
         HitCount = row.HitCount,
 
         // Stored as UTC; providers such as SQLite return the value without its kind.

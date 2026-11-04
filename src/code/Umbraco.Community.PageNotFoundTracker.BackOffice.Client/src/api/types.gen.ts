@@ -4,6 +4,15 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type CreateRedirectRequestModel = {
+    payload?: unknown;
+};
+
+export type CreateRedirectResponseModel = {
+    recordRemoved: boolean;
+    message?: string | null;
+};
+
 export type DashboardAccessResponseModel = {
     allowed: boolean;
 };
@@ -41,6 +50,7 @@ export type TrackedUrlResponseModel = {
     hitCount: number;
     firstSeen: string;
     lastSeen: string;
+    canCreateRedirect: boolean;
 };
 
 export type TrackedUrlSortColumn = 'Hits' | 'Url' | 'Domain' | 'Culture' | 'IsFile' | 'FirstSeen' | 'LastSeen';
@@ -114,6 +124,53 @@ export type GetTrackedUrlsResponses = {
 };
 
 export type GetTrackedUrlsResponse = GetTrackedUrlsResponses[keyof GetTrackedUrlsResponses];
+
+export type CreateTrackedUrlRedirectData = {
+    body?: CreateRedirectRequestModel;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/{id}/redirect';
+};
+
+export type CreateTrackedUrlRedirectErrors = {
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Not Found
+     */
+    404: ProblemDetails;
+    /**
+     * Conflict
+     */
+    409: ProblemDetails;
+    /**
+     * Unprocessable Content
+     */
+    422: ProblemDetails;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type CreateTrackedUrlRedirectError = CreateTrackedUrlRedirectErrors[keyof CreateTrackedUrlRedirectErrors];
+
+export type CreateTrackedUrlRedirectResponses = {
+    /**
+     * OK
+     */
+    200: CreateRedirectResponseModel;
+};
+
+export type CreateTrackedUrlRedirectResponse = CreateTrackedUrlRedirectResponses[keyof CreateTrackedUrlRedirectResponses];
 
 export type GetTrackedUrlFilterOptionsData = {
     body?: never;

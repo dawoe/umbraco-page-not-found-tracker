@@ -7,6 +7,7 @@ using Umbraco.Cms.Api.Common.ViewModels.Pagination;
 using Umbraco.Cms.Core;
 using Umbraco.Community.PageNotFoundTracker.BackOffice.Controllers;
 using Umbraco.Community.PageNotFoundTracker.BackOffice.Models;
+using Umbraco.Community.PageNotFoundTracker.Core.Redirects;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 
 namespace Umbraco.Community.PageNotFoundTracker.BackOffice.Tests;
@@ -19,6 +20,7 @@ internal sealed class TrackedUrlsControllerTests
 {
     private Mock<ITrackedUrlQueryService> service = null!;
     private Mock<ITrackingPersistenceState> state = null!;
+    private Mock<IRedirectProvider> provider = null!;
     private TrackedUrlQuery? lastQuery;
 
     /// <summary>
@@ -28,6 +30,7 @@ internal sealed class TrackedUrlsControllerTests
     public void SetUp()
     {
         this.lastQuery = null;
+        this.provider = new Mock<IRedirectProvider>();
         this.state = new Mock<ITrackingPersistenceState>();
         this.state.SetupGet(s => s.Status).Returns(TrackingPersistenceStatus.Available);
         this.service = new Mock<ITrackedUrlQueryService>();
@@ -261,6 +264,26 @@ internal sealed class TrackedUrlsControllerTests
     }
 
     /// <summary>
+    /// The row flag mirrors the provider's CanHandle for each row.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Get_CanCreateRedirect_MirrorsProviderCanHandle()
+    {
+        var page = new TrackedUrl { Id = 1, Url = "/page", DisplayUrl = "/page" };
+        var file = new TrackedUrl { Id = 2, Url = "/a.pdf", DisplayUrl = "/a.pdf", IsFile = true };
+        this.provider.Setup(p => p.CanHandle(It.IsAny<TrackedUrl>())).Returns<TrackedUrl>(u => !u.IsFile);
+        this.service
+            .Setup(s => s.GetPageAsync(It.IsAny<TrackedUrlQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TrackedUrlPage([page, file], 2));
+
+        IActionResult result = await this.CreateListController().GetTrackedUrls(CancellationToken.None);
+
+        var items = ((PagedViewModel<TrackedUrlResponseModel>)((OkObjectResult)result).Value!).Items.ToList();
+        Assert.That(items.Select(i => i.CanCreateRedirect), Is.EqualTo(new[] { true, false }));
+    }
+
+    /// <summary>
     /// The filter options are passed on as the response model.
     /// </summary>
     /// <returns>A task.</returns>
@@ -293,7 +316,7 @@ internal sealed class TrackedUrlsControllerTests
     private void VerifyNoQuery() =>
         this.service.Verify(s => s.GetPageAsync(It.IsAny<TrackedUrlQuery>(), It.IsAny<CancellationToken>()), Times.Never);
 
-    private GetTrackedUrlsController CreateListController() => new(this.service.Object, this.state.Object);
+    private GetTrackedUrlsController CreateListController() => new(this.service.Object, this.state.Object, this.provider.Object);
 
     private GetTrackedUrlFilterOptionsController CreateFilterOptionsController() => new(this.service.Object, this.state.Object);
 }

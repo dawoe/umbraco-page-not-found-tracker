@@ -183,6 +183,58 @@ internal sealed class TrackingQueue
         }
     }
 
+    /// <summary>
+    /// Removes every queued hit of one identity from the channel, the pending buffer and an uncompleted in-flight
+    /// batch, so a deleted record is not written back. The identity compares case-insensitively, like the merge key.
+    /// Takes the queue lock, so it must not run on a request thread.
+    /// </summary>
+    /// <param name="urlHash">The URL hash.</param>
+    /// <param name="domain">The domain, empty when none.</param>
+    /// <param name="culture">The culture, empty when none.</param>
+    /// <returns>The number of queued entries removed.</returns>
+    public int Discard(string urlHash, string domain, string culture)
+    {
+        ArgumentNullException.ThrowIfNull(urlHash);
+        ArgumentNullException.ThrowIfNull(domain);
+        ArgumentNullException.ThrowIfNull(culture);
+
+        var comparer = new IdentityComparer();
+        var identity = (urlHash, domain, culture);
+        int removed = 0;
+        lock (this.gate)
+        {
+            // The channel has no removal: drain it, put the others back in order and count the matches.
+            List<TrackedUrlHit> keep = [];
+            while (this.channel.Reader.TryRead(out TrackedUrlHit? hit))
+            {
+                if (comparer.Equals((hit.UrlHash, hit.Domain, hit.Culture), identity))
+                {
+                    removed++;
+                }
+                else
+                {
+                    keep.Add(hit);
+                }
+            }
+
+            foreach (TrackedUrlHit hit in keep)
+            {
+                this.channel.Writer.TryWrite(hit);
+            }
+
+            if (this.pending.Remove(identity))
+            {
+                removed++;
+            }
+
+            TrackedUrlHit[] remaining = [.. this.inFlight.Where(h => !comparer.Equals((h.UrlHash, h.Domain, h.Culture), identity))];
+            removed += this.inFlight.Length - remaining.Length;
+            this.inFlight = remaining;
+        }
+
+        return removed;
+    }
+
     private void Merge(TrackedUrlHit hit)
     {
         var key = (hit.UrlHash, hit.Domain, hit.Culture);

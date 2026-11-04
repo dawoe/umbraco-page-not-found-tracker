@@ -21,4 +21,12 @@ public interface ITrackedUrlQueryService
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The options.</returns>
     Task<TrackedUrlFilterOptions> GetFilterOptionsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets one tracked URL by its id.
+    /// </summary>
+    /// <param name="id">The id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The tracked URL, or <c>null</c> when there is none with that id.</returns>
+    Task<TrackedUrl?> GetByIdAsync(int id, CancellationToken cancellationToken);
 }
