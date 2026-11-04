@@ -7,6 +7,7 @@ using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Cms.Tests.Common.Testing;
 using Umbraco.Community.PageNotFoundTracker.Core.Blocking;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
+using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Blocking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
@@ -27,16 +28,13 @@ internal sealed class BlockMiddlewareTrackingDisabledTests : PageNotFoundTestBas
     public async Task Blocking_works_with_tracking_disabled()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        // Migrations still run with tracking off: wait until the persistence is available, then add the rule.
+        bool ready = await this.GetRequiredService<ITrackingPersistenceState>().WaitUntilReadyAsync(timeout.Token);
+        Assert.That(ready, Is.True, "The tracking persistence must become available.");
+
         var factory = this.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>();
-
-        // Migrations still run with tracking off; wait for the first snapshot load, then add the rule.
-        BlockSnapshot snapshot = BlockSnapshot.Empty;
         var provider = this.GetRequiredService<IBlockSnapshotProvider>();
-        for (int i = 0; i < 10 && ReferenceEquals(snapshot, BlockSnapshot.Empty); i++)
-        {
-            snapshot = await provider.GetAsync(timeout.Token);
-        }
-
         await using (PageNotFoundTrackerDbContext dbContext = await factory.CreateDbContextAsync(timeout.Token))
         {
             dbContext.BlockRules.Add(new BlockRule

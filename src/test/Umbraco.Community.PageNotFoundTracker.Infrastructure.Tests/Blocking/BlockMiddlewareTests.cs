@@ -150,6 +150,74 @@ internal sealed class BlockMiddlewareTests
         });
     }
 
+    /// <summary>
+    /// With an empty snapshot every request passes through untouched.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Empty_snapshot_passes_through()
+    {
+        var provider = new Mock<IBlockSnapshotProvider>();
+        provider.Setup(p => p.GetAsync(It.IsAny<CancellationToken>())).Returns(new ValueTask<BlockSnapshot>(BlockSnapshot.Empty));
+        var nextCalled = false;
+        var middleware = new BlockMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var context = Context("/old", "GET", string.Empty);
+
+        await middleware.InvokeAsync(context, provider.Object);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(BlockSnapshot.Empty.IsEmpty, Is.True);
+            Assert.That(Snapshot("/old", 410).IsEmpty, Is.False);
+            Assert.That(nextCalled, Is.True);
+            Assert.That(context.Response.StatusCode, Is.EqualTo(200));
+        });
+    }
+
+    /// <summary>
+    /// A client that aborts while the request waits for the snapshot ends the request quietly: no exception, no next.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Aborted_request_while_waiting_returns_quietly()
+    {
+        using var aborted = new CancellationTokenSource();
+        await aborted.CancelAsync();
+        var provider = new Mock<IBlockSnapshotProvider>();
+        provider.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .Returns((CancellationToken ct) => ValueTask.FromException<BlockSnapshot>(new OperationCanceledException(ct)));
+        var nextCalled = false;
+        var middleware = new BlockMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var context = Context("/old", "GET", string.Empty);
+        context.RequestAborted = aborted.Token;
+
+        Assert.DoesNotThrowAsync(() => middleware.InvokeAsync(context, provider.Object));
+        Assert.That(nextCalled, Is.False);
+    }
+
+    /// <summary>
+    /// A cancellation that is not the request's own abort is not swallowed.
+    /// </summary>
+    [Test]
+    public void Cancellation_without_abort_is_rethrown()
+    {
+        var provider = new Mock<IBlockSnapshotProvider>();
+        provider.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .Returns(ValueTask.FromException<BlockSnapshot>(new OperationCanceledException()));
+        var middleware = new BlockMiddleware(_ => Task.CompletedTask);
+        var context = Context("/old", "GET", string.Empty);
+
+        Assert.ThrowsAsync<OperationCanceledException>(() => middleware.InvokeAsync(context, provider.Object));
+    }
+
     private static BlockSnapshot Snapshot(string pattern, int status) =>
         BlockSnapshot.Build([new BlockRule { Pattern = BlockPatternNormalizer.Normalize(pattern), StatusCode = status }], []);
 

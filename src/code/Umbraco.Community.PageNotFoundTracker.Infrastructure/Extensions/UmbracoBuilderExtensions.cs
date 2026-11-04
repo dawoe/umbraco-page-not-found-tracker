@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Cms.Core.Notifications;
 using Umbraco.Community.PageNotFoundTracker.Core;
+using Umbraco.Community.PageNotFoundTracker.Core.Blocking;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
 using Umbraco.Community.PageNotFoundTracker.Core.Dashboard;
 using Umbraco.Community.PageNotFoundTracker.Core.NotFound;
@@ -66,13 +67,16 @@ internal static class UmbracoBuilderExtensions
     }
 
     /// <summary>
-    /// Registers the block snapshot provider, its startup load and the handlers that rebuild it when Umbraco's domains
+    /// Registers the block snapshot provider, the rule service, the rule change notifier (a no-op until the cache
+    /// refresher replaces it), the snapshot's startup load and the handlers that rebuild it when Umbraco's domains
     /// or languages change.
     /// </summary>
     /// <param name="builder">The Umbraco builder.</param>
     private static void AddBlocking(IUmbracoBuilder builder)
     {
         builder.Services.AddUnique<IBlockSnapshotProvider, BlockSnapshotProvider>();
+        builder.Services.AddUnique<IBlockRuleService, BlockRuleService>();
+        builder.Services.AddUnique<IBlockRuleChangeNotifier, NoOpBlockRuleChangeNotifier>();
         builder.Services.AddHostedService<BlockSnapshotService>();
         builder.AddNotificationAsyncHandler<DomainCacheRefresherNotification, BlockSnapshotInvalidationHandler>();
         builder.AddNotificationAsyncHandler<LanguageCacheRefresherNotification, BlockSnapshotInvalidationHandler>();

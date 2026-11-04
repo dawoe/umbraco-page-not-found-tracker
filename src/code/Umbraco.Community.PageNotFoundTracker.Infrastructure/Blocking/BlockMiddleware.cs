@@ -35,7 +35,23 @@ internal sealed class BlockMiddleware
             return;
         }
 
-        BlockSnapshot snapshot = await provider.GetAsync(context.RequestAborted);
+        BlockSnapshot snapshot;
+        try
+        {
+            snapshot = await provider.GetAsync(context.RequestAborted);
+        }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            // The client went away while the request waited for the initial load: nobody reads an answer.
+            return;
+        }
+
+        if (snapshot.IsEmpty)
+        {
+            // The common case on a site without rules: no path normalisation on the hot path.
+            await this.next(context);
+            return;
+        }
 
         // Kestrel already percent-decoded the path once: it is not decoded again.
         string path = TrackedUrlNormalizer.NormalizePath(rawPath);

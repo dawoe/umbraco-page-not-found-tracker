@@ -37,6 +37,11 @@ internal sealed class BlockSnapshot
     public bool NeedsDomainMatch { get; }
 
     /// <summary>
+    /// Gets a value indicating whether the snapshot has no rules, so no request can be blocked.
+    /// </summary>
+    public bool IsEmpty => this.rules.Length == 0;
+
+    /// <summary>
     /// Builds a snapshot.
     /// </summary>
     /// <param name="rules">The rules; their <see cref="BlockRule.Pattern"/> is already normalised.</param>

@@ -200,6 +200,20 @@ internal sealed class TrackingQueue
 
         var comparer = new IdentityComparer();
         var identity = (urlHash, domain, culture);
+        return this.DiscardMatching(hit => comparer.Equals((hit.UrlHash, hit.Domain, hit.Culture), identity));
+    }
+
+    /// <summary>
+    /// Removes every queued hit a predicate selects from the channel, the pending buffer and an uncompleted in-flight
+    /// batch, so deleted records are not written back (a new block rule discards the hits it covers). Takes the queue
+    /// lock, so it must not run on a request thread.
+    /// </summary>
+    /// <param name="predicate">Selects the hits to remove; it runs under the queue lock, so keep it cheap.</param>
+    /// <returns>The number of queued entries removed (a merged pending entry counts once).</returns>
+    public int DiscardMatching(Func<TrackedUrlHit, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+
         int removed = 0;
         lock (this.gate)
         {
@@ -207,7 +221,7 @@ internal sealed class TrackingQueue
             List<TrackedUrlHit> keep = [];
             while (this.channel.Reader.TryRead(out TrackedUrlHit? hit))
             {
-                if (comparer.Equals((hit.UrlHash, hit.Domain, hit.Culture), identity))
+                if (predicate(hit))
                 {
                     removed++;
                 }
@@ -222,12 +236,15 @@ internal sealed class TrackingQueue
                 this.channel.Writer.TryWrite(hit);
             }
 
-            if (this.pending.Remove(identity))
+            var pendingKeys = this.pending.Where(p => predicate(p.Value)).Select(p => p.Key).ToList();
+            foreach (var key in pendingKeys)
             {
-                removed++;
+                this.pending.Remove(key);
             }
 
-            TrackedUrlHit[] remaining = [.. this.inFlight.Where(h => !comparer.Equals((h.UrlHash, h.Domain, h.Culture), identity))];
+            removed += pendingKeys.Count;
+
+            TrackedUrlHit[] remaining = [.. this.inFlight.Where(h => !predicate(h))];
             removed += this.inFlight.Length - remaining.Length;
             this.inFlight = remaining;
         }
