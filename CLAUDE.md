@@ -767,7 +767,7 @@ A "Create redirect" row action (page rows only) opens a modal; confirming create
   shows up as a new row; creating the redirect again replaces the existing one).
 
 **Default provider** `UmbracoRedirectProvider` (Infrastructure, internal, `AddUnique`), built on Umbraco's
-`IRedirectUrlService` (the "Redirect URL Management" dashboard shows the result and lets editors remove it). Facts The target must be published; for a record with a culture and a culture-variant target it must be published in that culture (`IsInvariantOrHasCulture`, unit-tested only: no multi-culture integration setup).
+`IRedirectUrlService` (the "Redirect URL Management" dashboard shows the result and lets editors remove it). The target must be published; for a record with a culture and a culture-variant target it must be published in that culture (`IsInvariantOrHasCulture`, unit-tested only: no multi-culture integration setup). Facts
 verified against Umbraco 17.8 (`RedirectOrderingTests`, `UmbracoRedirectProviderTests` in Integration.Tests):
 
 - Payload `{ "targetKey": "<document key>" }`. A missing, garbage or empty-guid payload, or a target that is not published
