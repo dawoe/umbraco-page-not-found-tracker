@@ -1,6 +1,6 @@
 # Spec 6: Blocked URLs
 
-Status: draft, awaiting builder check and approval
+Status: draft, build decisions added, awaiting builder check and approval
 Depends on: spec 5 (redirects), spec 4 (dashboard), spec 3 (tracking), spec 2 (404 handling)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 
@@ -294,6 +294,48 @@ These are the writer's calls, not decisions the user made:
 - Both migration sets and the pending-model-changes check pass.
 - `CLAUDE.md` documents the rule model, matching, the safeguards, the cache refresher and
   the new endpoints.
+
+## Build decisions (agreed before planning)
+
+- **Delivery:** one feature branch `feature/6-blocked-urls` off `develop`, one PR for the whole spec
+  (backend, migrations, client, E2E, `CLAUDE.md`).
+- **Entry point:** the block middleware is added by the existing `UsePageNotFoundTracker()` (before
+  `UseUmbraco()`), together with the file 404 middleware. A site that never calls it gets no blocking; this is
+  documented in `CLAUDE.md`.
+- **Delete on create (decided with the user):** the pattern is translated to a SQL `LIKE` (`*` becomes `%`; literal
+  `%`, `_`, `[` and `\` escaped with spec 4's `LikePattern`) and run as one `ExecuteDelete` against the normalised,
+  lower-cased `RelativePath`, scoped by exact domain and culture (empty = all). A parity test runs the same patterns and
+  URLs through this SQL and the in-memory matcher, on SQLite and (when configured) SQL Server.
+- **Request matching (decided with the user):** each rule is compiled into literal segments split on `*`. The snapshot
+  keeps rules pre-sorted by specificity (domain beats all domains, culture beats all cultures, longer literal prefix,
+  then lowest status code), and a request scans them in order; the first match wins. No trie.
+- **Row actions:** adding "Block" to the tracked URL rows turns the single inline "Create redirect" button into a
+  dropdown; the selectors in `tests/redirect.spec.ts` are updated in this PR.
+- **Queued hit discard:** `TrackingQueue` gets a pattern-based discard (path only, within domain and culture scope),
+  used by the creating server (inside the flush lock, as spec 5) and by the refresher on every other server.
+
+### Builder-check calls (writer's calls, not user decisions)
+
+- **Domain matching in the middleware:** the domain-selection logic of spec 2 is extracted into a pure function over a
+  list of domain entries. The snapshot holds that list (copied from `IDomainCache`, rebuilt on domain and language
+  changes) and the middleware calls the same function, so "matched domain" means the same thing in both places and
+  no domain lookup happens per request. A rule's domain is the exact lower-cased matched domain name as tracking
+  stores it (including port and alias path); several domains with one name are told apart by culture as in spec 5.
+- **Placement:** `UsePageNotFoundTracker()` already sits before `UseUmbraco()`, which is where Umbraco adds its static
+  file handling, so the block middleware registers there. The integration tests use the existing startup filter and prove
+  the order with a real file request and a redirect.
+- **Decoding:** no second percent-decode at request time. The request path is already decoded by Kestrel, as in spec 3;
+  patterns are normalised with the same normaliser, so the in-memory matcher and the `RelativePath` delete see the same
+  text. A normalised pattern longer than 800 characters (the `RelativePath` column) is rejected with a message.
+- **Queued hit discard:** compares the pattern against the hit's `RelativePath`, within the rule's domain and culture
+  scope (the hit already carries all three), so no prefix stripping is repeated.
+- **Created by:** not recorded; only the UTC timestamp.
+- **Overlap with Umbraco-owned paths:** rejected when the pattern could match the owned path itself or anything under it
+  (for example `/um*`, `*umbraco*`, `/*/umbraco`). The request-time exclusion of owned paths remains the real protection.
+- **Initial load:** a request waits for the shared initial load for at most 5 seconds (and while persistence is
+  `Pending`), then passes through with a warning; the load retries in the background every 30 seconds. With persistence
+  `Unavailable` requests pass through immediately.
+- **Blocked responses are never tracked,** including rules whose status is 404.
 
 ## Left to the builder
 
