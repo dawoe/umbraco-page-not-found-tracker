@@ -2,7 +2,7 @@ import type { UmbControllerHost } from '@umbraco-cms/backoffice/controller-api';
 import type { UmbConditionConfigBase, UmbConditionControllerArguments, UmbExtensionCondition } from '@umbraco-cms/backoffice/extension-api';
 import { UmbConditionBase } from '@umbraco-cms/backoffice/extension-registry';
 import { getDashboardAccess } from '../api/index.js';
-import { whenClientConfigured } from '../api/client-ready.js';
+import { whenClientConfigured } from '../client-ready.js';
 import { createDashboardAccessCheck } from './dashboard-access.js';
 import type { PNFT_DASHBOARD_ACCESS_CONDITION_ALIAS } from './constants.js';
 
