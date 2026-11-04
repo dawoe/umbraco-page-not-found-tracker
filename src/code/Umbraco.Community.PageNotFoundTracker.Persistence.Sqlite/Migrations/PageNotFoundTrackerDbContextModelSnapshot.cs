@@ -19,6 +19,55 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("Umbraco.Community.PageNotFoundTracker.Core.Blocking.BlockRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Culture")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("");
+
+                    b.Property<string>("DisplayPattern")
+                        .IsRequired()
+                        .HasMaxLength(800)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Domain")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(800)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PatternHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatternHash", "Domain", "Culture")
+                        .IsUnique();
+
+                    b.ToTable("pageNotFoundTrackerBlockRule", (string)null);
+                });
+
             modelBuilder.Entity("Umbraco.Community.PageNotFoundTracker.Core.Tracking.TrackedUrl", b =>
                 {
                     b.Property<int>("Id")

@@ -24,6 +24,57 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Umbraco.Community.PageNotFoundTracker.Core.Blocking.BlockRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Created")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Culture")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("");
+
+                    b.Property<string>("DisplayPattern")
+                        .IsRequired()
+                        .HasMaxLength(800)
+                        .HasColumnType("nvarchar(800)");
+
+                    b.Property<string>("Domain")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasDefaultValue("");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(800)
+                        .HasColumnType("nvarchar(800)");
+
+                    b.Property<string>("PatternHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatternHash", "Domain", "Culture")
+                        .IsUnique();
+
+                    b.ToTable("pageNotFoundTrackerBlockRule", (string)null);
+                });
+
             modelBuilder.Entity("Umbraco.Community.PageNotFoundTracker.Core.Tracking.TrackedUrl", b =>
                 {
                     b.Property<int>("Id")

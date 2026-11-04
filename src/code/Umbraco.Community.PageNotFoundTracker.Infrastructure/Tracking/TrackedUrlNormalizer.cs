@@ -116,7 +116,12 @@ internal static class TrackedUrlNormalizer
         return path.StartsWith(prefix + "/", StringComparison.Ordinal) ? path[prefix.Length..] : path;
     }
 
-    private static string Hash(string url)
+    /// <summary>
+    /// Computes the SHA-256 hash of a value as lower-case hex.
+    /// </summary>
+    /// <param name="url">The value to hash.</param>
+    /// <returns>The 64 character hash.</returns>
+    internal static string Hash(string url)
     {
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(url)));
     }
