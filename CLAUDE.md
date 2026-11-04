@@ -666,7 +666,7 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 npm run generate-client   # self-signed dev cert:
 Never commit the swagger file and never a base URL: the config sets `baseUrl: false` and patches `servers: [{ url: '/' }]`
 into the document (otherwise the generator writes the fetch origin into `types.gen.ts`). `entry.ts` configures the
 client at runtime with `UMB_AUTH_CONTEXT`'s `configureClient(client)` (server URL, credentials, bearer token with
-refresh, Umbraco's interceptors), then `markClientConfigured()` (`api/client-ready.ts`) releases code that waits for it.
+refresh, Umbraco's interceptors), then `markClientConfigured()` (`client-ready.ts`) releases code that waits for it.
 `check-package.ps1` fails the pack check if `localhost` appears anywhere in the client bundle.
 
 **Client setup** (`src/code/...BackOffice.Client/src/`):
@@ -767,7 +767,7 @@ A "Create redirect" row action (page rows only) opens a modal; confirming create
   shows up as a new row; creating the redirect again replaces the existing one).
 
 **Default provider** `UmbracoRedirectProvider` (Infrastructure, internal, `AddUnique`), built on Umbraco's
-`IRedirectUrlService` (the "Redirect URL Management" dashboard shows the result and lets editors remove it). Facts
+`IRedirectUrlService` (the "Redirect URL Management" dashboard shows the result and lets editors remove it). Facts The target must be published; for a record with a culture and a culture-variant target it must be published in that culture (`IsInvariantOrHasCulture`, unit-tested only: no multi-culture integration setup).
 verified against Umbraco 17.8 (`RedirectOrderingTests`, `UmbracoRedirectProviderTests` in Integration.Tests):
 
 - Payload `{ "targetKey": "<document key>" }`. A missing, garbage or empty-guid payload, or a target that is not published

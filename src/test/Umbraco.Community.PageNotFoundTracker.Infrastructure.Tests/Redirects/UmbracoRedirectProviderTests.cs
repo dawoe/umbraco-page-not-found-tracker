@@ -36,7 +36,7 @@ internal sealed class UmbracoRedirectProviderTests
         this.domains = new Mock<IDomainCache>();
         this.domains.Setup(d => d.GetAll(false)).Returns([]);
         this.content = new Mock<IPublishedContentCache>();
-        this.content.Setup(c => c.GetByIdAsync(TargetKey, false)).ReturnsAsync(Mock.Of<IPublishedContent>());
+        this.content.Setup(c => c.GetByIdAsync(TargetKey, false)).ReturnsAsync(Target(variesByCulture: false));
         this.provider = new UmbracoRedirectProvider(this.redirects.Object, this.domains.Object, this.content.Object);
     }
 
@@ -266,6 +266,74 @@ internal sealed class UmbracoRedirectProviderTests
 
         this.redirects.Verify(r => r.Delete(existingKey), Times.Once);
         this.redirects.Verify(r => r.Register("/old", TargetKey, "en-us"), Times.Once);
+    }
+
+    /// <summary>
+    /// A culture-variant target that is not published in the record's culture fails and registers nothing.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Variant_target_unpublished_in_record_culture_fails()
+    {
+        var key = Guid.NewGuid();
+        this.content.Setup(c => c.GetByIdAsync(key, false)).ReturnsAsync(Target(variesByCulture: true, "en-US"));
+
+        RedirectResult result = await this.provider.CreateAsync(Row("/old", string.Empty, "nl-NL"), Payload(key), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Message, Does.Contain("nl-NL"));
+        });
+        this.redirects.Verify(r => r.Register(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    /// <summary>
+    /// A culture-variant target that is published in the record's culture (compared case-insensitively) succeeds.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Variant_target_published_in_record_culture_succeeds()
+    {
+        var key = Guid.NewGuid();
+        this.content.Setup(c => c.GetByIdAsync(key, false)).ReturnsAsync(Target(variesByCulture: true, "en-US", "nl-nl"));
+
+        RedirectResult result = await this.provider.CreateAsync(Row("/old", string.Empty, "nl-NL"), Payload(key), CancellationToken.None);
+
+        Assert.That(result.Succeeded, Is.True);
+        this.redirects.Verify(r => r.Register("/old", key, "nl-nl"), Times.Once);
+    }
+
+    /// <summary>
+    /// An invariant target succeeds for a record with a culture.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Invariant_target_succeeds_for_record_with_culture()
+    {
+        var key = Guid.NewGuid();
+        this.content.Setup(c => c.GetByIdAsync(key, false)).ReturnsAsync(Target(variesByCulture: false));
+
+        RedirectResult result = await this.provider.CreateAsync(Row("/old", string.Empty, "nl-NL"), Payload(key), CancellationToken.None);
+
+        Assert.That(result.Succeeded, Is.True);
+        this.redirects.Verify(r => r.Register("/old", key, "nl-nl"), Times.Once);
+    }
+
+    private static IPublishedContent Target(bool variesByCulture, params string[] publishedCultures)
+    {
+        var type = new Mock<IPublishedContentType>();
+        type.SetupGet(t => t.Variations).Returns(variesByCulture ? ContentVariation.Culture : ContentVariation.Nothing);
+
+        var cultures = publishedCultures.ToDictionary(
+            c => c,
+            c => new PublishedCultureInfo(c, c, "/", DateTime.UtcNow),
+            StringComparer.OrdinalIgnoreCase);
+
+        var target = new Mock<IPublishedContent>();
+        target.SetupGet(t => t.ContentType).Returns(type.Object);
+        target.SetupGet(t => t.Cultures).Returns(cultures);
+        return target.Object;
     }
 
     private static TrackedUrl Row(string relativePath, string domain, string culture) =>

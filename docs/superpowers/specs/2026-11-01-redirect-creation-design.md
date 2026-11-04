@@ -1,6 +1,6 @@
 # Spec 5: Redirect creation
 
-Status: draft, awaiting builder check and approval
+Status: implemented (issue #5, branch `feature/5-redirect-creation`)
 Depends on: spec 4 (dashboard), spec 3 (tracking), spec 2 (404 handling)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 

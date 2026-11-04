@@ -54,7 +54,15 @@ export class PnftCreateRedirectModalElement extends UmbModalBaseElement<PnftCrea
     this._submitting = true;
 
     try {
-      const payload = await this.#form.getPayload();
+      let payload: unknown;
+
+      try {
+        payload = await this.#form.getPayload();
+      } catch {
+        // A custom form may throw instead of returning undefined: show the generic error inline, never an unhandled rejection.
+        this._error = this.localize.term('pageNotFoundTracker_redirectError');
+        return;
+      }
 
       if (payload === undefined) {
         return;
@@ -117,6 +125,7 @@ export class PnftCreateRedirectModalElement extends UmbModalBaseElement<PnftCrea
           <uui-button
             data-mark=${PNFT_REDIRECT_DATA_MARKS.cancel}
             label=${this.localize.term('general_cancel')}
+            ?disabled=${this._submitting}
             @click=${() => this._rejectModal()}></uui-button>
           <uui-button
             data-mark=${PNFT_REDIRECT_DATA_MARKS.confirm}

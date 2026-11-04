@@ -108,3 +108,58 @@ test.describe('create redirect from a tracked URL', () => {
     expect(new URL(response.headers()['location'], 'https://localhost').pathname).toBe('/about/');
   });
 });
+
+test.describe('a custom redirect form replaces the default one', () => {
+  test.describe.configure({ timeout: 180_000 });
+
+  const customPath = `/${prefix}-custom`;
+  const CUSTOM_MARK = 'pnft-e2e-custom-form';
+
+  test.beforeAll(async ({ request }) => {
+    expect((await request.get(customPath)).status()).toBe(404);
+  });
+
+  test('a form registered with weight 0 is hosted instead of the default form', async ({ page }) => {
+    await openAndSearch(page, `${prefix}-custom`, 1);
+
+    // Register the form at runtime through the backoffice extension registry (the import map resolves the bare specifier).
+    await page.evaluate(async (mark) => {
+      const { umbExtensionsRegistry } = await import('@umbraco-cms/backoffice/extension-registry');
+
+      class CustomForm extends HTMLElement {
+        trackedUrl?: unknown;
+
+        connectedCallback() {
+          this.setAttribute('data-mark', mark);
+          this.textContent = 'custom redirect form';
+        }
+
+        async getPayload() {
+          return { custom: true };
+        }
+      }
+
+      if (!customElements.get('pnft-e2e-custom-redirect-form')) {
+        customElements.define('pnft-e2e-custom-redirect-form', CustomForm);
+      }
+
+      umbExtensionsRegistry.register({
+        type: 'pnftRedirectForm',
+        alias: 'Pnft.E2E.CustomRedirectForm',
+        name: 'Pnft E2E Custom Redirect Form',
+        weight: 0,
+        elementName: 'pnft-e2e-custom-redirect-form',
+      } as never);
+    }, CUSTOM_MARK);
+
+    await rowFor(page, customPath).getByTestId(CREATE_REDIRECT_ACTION).click();
+    await expect(page.getByTestId(MARKS.modal)).toBeVisible();
+
+    await expect(page.getByTestId(CUSTOM_MARK)).toBeVisible();
+    await expect(page.getByTestId(MARKS.targetPicker)).toHaveCount(0);
+
+    await page.getByTestId(MARKS.cancel).click();
+    await expect(page.getByTestId(MARKS.modal)).toBeHidden();
+    await expect(rowFor(page, customPath)).toHaveCount(1);
+  });
+});

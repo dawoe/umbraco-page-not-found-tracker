@@ -72,8 +72,9 @@ internal sealed class TrackedUrlRedirectService : ITrackedUrlRedirectService
 
         try
         {
-            // False means the row was already gone, which is the state we want.
-            await this.remover.DeleteAsync(url, cancellationToken);
+            // False means the row was already gone, which is the state we want. No cancellation token: once the redirect exists,
+            // a client abort must not skip the removal and leave the record without the "both facts" outcome and logging.
+            await this.remover.DeleteAsync(url, CancellationToken.None);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

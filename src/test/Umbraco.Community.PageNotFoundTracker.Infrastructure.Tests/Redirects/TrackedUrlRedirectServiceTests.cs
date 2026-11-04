@@ -122,6 +122,20 @@ internal sealed class TrackedUrlRedirectServiceTests
     }
 
     /// <summary>
+    /// The delete after a success ignores the caller's cancellation, so an aborted request cannot skip the removal.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Delete_after_success_uses_no_cancellation_token()
+    {
+        using var cts = new CancellationTokenSource();
+
+        await this.service.CreateAsync(7, null, cts.Token);
+
+        this.remover.Verify(r => r.DeleteAsync(this.url, CancellationToken.None), Times.Once);
+    }
+
+    /// <summary>
     /// A failing delete after a success gives CreatedRecordNotRemoved and is logged.
     /// </summary>
     /// <returns>A task.</returns>

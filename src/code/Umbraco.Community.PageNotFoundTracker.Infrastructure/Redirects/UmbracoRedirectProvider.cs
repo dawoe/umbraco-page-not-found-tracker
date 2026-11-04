@@ -7,6 +7,7 @@ using Umbraco.Cms.Core.Routing;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Community.PageNotFoundTracker.Core.Redirects;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
+using Umbraco.Extensions;
 
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Redirects;
 
@@ -63,6 +64,11 @@ internal sealed class UmbracoRedirectProvider : IRedirectProvider
         if (target is null)
         {
             return RedirectResult.Failure(TargetNotFoundMessage);
+        }
+
+        if (!string.IsNullOrWhiteSpace(url.Culture) && !target.IsInvariantOrHasCulture(url.Culture))
+        {
+            return RedirectResult.Failure($"The target page is not published in {url.Culture}.");
         }
 
         int? rootId = null;
