@@ -9,9 +9,10 @@ requests that end in a 404 and, in later versions, lets editors turn tracked URL
 or block them. Built today: the foundation (spec 1: solution, build, test, pack, publish, a test site
 that runs in four scenarios), 404 handling (spec 2: the configured 404 page is shown for missing pages
 and missing files), tracking (spec 3: every 404 is counted per URL in a database table, SQLite or SQL
-Server) and the backoffice dashboard (spec 4: a searchable, sortable, filterable, paged list of tracked
-URLs in the Content section, served by the package's own Management API). The dashboard has no row
-actions yet: redirects, blocking and implementer documentation (specs 5 to 7) are planned, not built.
+Server), the backoffice dashboard (spec 4: a searchable, sortable, filterable, paged list of tracked
+URLs in the Content section, served by the package's own Management API) and redirect creation (spec 5: a
+"Create redirect" row action that creates a redirect and removes the tracked URL; replaceable provider and form).
+Blocking and implementer documentation (specs 6 and 7) are planned, not built.
 Do not document or promise them as existing.
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
@@ -20,7 +21,7 @@ Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spe
 2. 404 handling for pages and files: `docs/superpowers/specs/2026-11-01-not-found-handling-design.md` (done)
 3. Tracking of 404 URLs: `docs/superpowers/specs/2026-11-01-tracking-design.md` (done)
 4. Backoffice dashboard: `docs/superpowers/specs/2026-11-01-dashboard-design.md` (done)
-5. Redirect creation: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md`
+5. Redirect creation: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md` (done)
 6. Blocked URLs: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md`
 7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md`
 
@@ -30,6 +31,7 @@ Plans (`docs/superpowers/plans/`):
 - 404 handling: `docs/superpowers/plans/2026-11-02-not-found-handling.md`
 - Tracking: `docs/superpowers/plans/2026-11-03-tracking.md`
 - Dashboard: `docs/superpowers/plans/2026-11-03-dashboard.md`
+- Redirect creation: `docs/superpowers/plans/2026-11-04-redirect-creation.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -54,13 +56,15 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
 - `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client/` — backoffice client
   (TypeScript, Lit, Vite, Vitest): the generated API client (`src/api/`), the tracked URL collection
   (`src/collection/`), the dashboard (`src/dashboards/tracked-urls/`), the access condition
-  (`src/conditions/`) and the English texts (`src/localization/`). The spec 1 placeholder dashboard is gone
+  (`src/conditions/`), the create redirect flow (`src/redirect/`: form extension type, modal, default form, row action) and the
+  English texts (`src/localization/`). `src/client-ready.ts` lives outside `src/api/` on purpose (see Redirects). The spec 1
+  placeholder dashboard is gone
 - `src/test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests/` and `.BackOffice.Tests/` —
   NUnit + Moq unit tests
 - `src/test/Umbraco.Community.PageNotFoundTracker.Integration.Tests/` — Umbraco integration tests
   (boots Umbraco on SQLite with the package composed in; tracking database tests on SQLite and SQL Server)
 - `src/test/Umbraco.Community.PageNotFoundTracker.E2E/` — Playwright tests (`tests/not-found.spec.ts`,
-  `tests/dashboard.spec.ts`)
+  `tests/dashboard.spec.ts`, `tests/redirect.spec.ts`)
 - `test-sites/Website-V17/` — Umbraco 17 test site (Clean starter kit), project-references the
   entry package, both persistence projects and BackOffice (the entry project references them `PrivateAssets=all`
   and never uses them in code, so a project-referencing site would not get their dlls: tracking would be off and
@@ -591,7 +595,7 @@ commit that (restore with `git checkout`, see Committed databases). Committed da
 A dashboard "Page not found" in the Content section (`/umbraco/section/content/dashboard/page-not-found-tracker`) lists
 the tracked URLs: URL, domain, culture, type (page or file), first seen, last seen, hits; default order hits descending.
 Search by URL, domain and culture filters, page size 20 (default), 50 or 100, every column sortable. Not live: users
-reload (or change a filter) to see new data. No row actions yet (specs 5 and 6 add them, see below). States: loading,
+reload (or change a filter) to see new data. Row action: Create redirect (spec 5, see Redirects); blocking (spec 6) is planned. States: loading,
 empty (nothing tracked), empty after filtering, error, and unavailable (503: database unsupported or migrations failed;
 final for the process, needs a fix and a restart).
 
@@ -701,30 +705,27 @@ refresh, Umbraco's interceptors), then `markClientConfigured()` (`api/client-rea
   the tab) sometimes kept showing the Welcome dashboard under the dashboard's URL; a second click rendered it (the E2E
   helper reloads until the collection shows). Not diagnosed further (seen in a background browser pane).
 
-**Adding a row action (specs 5 and 6).** Umbraco 17 has no `entityType` manifest: the entity type is the constant
+**Row actions (specs 5 and 6).** Umbraco 17 has no `entityType` manifest: the entity type is the constant
 `PNFT_TRACKED_URL_ENTITY_TYPE = 'page-not-found-tracker-url'` (`src/entity.ts`). Every table row gets an
-`UmbEntityContext` with that entity type and `unique = String(id)`, and the table already has the framework's entity
-actions column (`umb-entity-actions-table-column-view`, last column, hidden when the collection hides item actions).
-So an action is only a manifest:
+`UmbEntityContext` with that entity type and `unique = String(id)`, and the table has the framework's entity actions
+column (`umb-entity-actions-table-column-view`, last column, hidden when the collection hides item actions). An action
+is a manifest plus a class extending `UmbEntityActionBase`. The one registered action is the real example to copy for
+spec 6 (blocking): `src/redirect/manifests.ts` (`Pnft.EntityAction.TrackedUrl.CreateRedirect`, kind `default`,
+`forEntityTypes: [PNFT_TRACKED_URL_ENTITY_TYPE]`, icon `icon-arrow-right`, label `#pageNotFoundTracker_createRedirect`,
+`additionalOptions: true`) and `src/redirect/create-redirect.action.ts`.
 
-```ts
-{
-  type: 'entityAction',
-  kind: 'default',
-  alias: 'Pnft.EntityAction.TrackedUrl.CreateRedirect',
-  name: 'Page Not Found Tracker Create Redirect Entity Action',
-  forEntityTypes: [PNFT_TRACKED_URL_ENTITY_TYPE], // 'page-not-found-tracker-url'
-  api: () => import('./create-redirect.action.js'), // extends UmbEntityActionBase
-  meta: { icon: 'icon-arrow-right', label: '#pageNotFoundTracker_createRedirect' },
-}
-```
-
-The action's `args` carry only `entityType` and `unique` (the id as a string). The other row fields
-(`PnftTrackedUrlCollectionModel`: `id`, `url`, `relativePath`, `domain`, `culture`, `isFile`, `hitCount`, `firstSeen`,
-`lastSeen`) are not passed: read the item with that `unique` from the collection context's items
-(`PNFT_TRACKED_URL_COLLECTION_CONTEXT`), or fetch it from the API. `relativePath` (the URL without the domain's own path)
-is there for redirects and blocking. After a change, call the context's `loadCollection()` to refresh. No action was
-registered in spec 4, so the column has never rendered a real action: verify the first one in the browser.
+- The action's `args` carry only `entityType` and `unique` (the id as a string). The other row fields
+  (`PnftTrackedUrlCollectionModel`: `id`, `url`, `relativePath`, `domain`, `culture`, `isFile`, `hitCount`, `firstSeen`,
+  `lastSeen`, `canCreateRedirect`) are read from the collection context's items by `unique`
+  (`PNFT_TRACKED_URL_COLLECTION_CONTEXT`); `relativePath` is there for redirects and blocking.
+- Per-row visibility is a condition on the action (`Pnft.Condition.CanCreateRedirect`,
+  `src/redirect/can-create-redirect.condition.ts`): it consumes the row's `UMB_ENTITY_CONTEXT` and the collection context
+  and re-evaluates when the items change. The entity actions bundle evaluates action conditions with itself (inside the
+  row) as host and renders nothing when no action is permitted, so a hidden action leaves no button.
+- With a single permitted action the bundle renders an inline button in the actions column (data-mark
+  `entity-action:<alias>`), not a dropdown. A second action turns that into a dropdown: re-check the E2E selectors.
+- Capture the notification context and localization before opening a modal: the reload after success removes the row
+  and with it the action's host. After a change call the collection context's `loadCollection()`.
 
 **Tests.** Unit (`DashboardAccessTests`, `LikePatternTests`, `TrackedUrlsControllerTests`, `DashboardAccessHandlerTests`)
 and Vitest for client logic. `TrackedUrlQueryServiceTests` (Integration) run the query service on SQLite and, with
@@ -738,6 +739,162 @@ so reruns on the same database work, and needs `FlushInterval=00:00:01` (it retr
 pager checks depend on the English `uui-pagination` texts ("Pagination navigation. Current page: N.", "Go to page N"):
 re-check on an Umbraco/UUI upgrade. The domain and culture filters are checked manually on the multi-site and
 multi-language profiles (single-site has no domains).
+
+## Redirects (spec 5)
+
+A "Create redirect" row action (page rows only) opens a modal; confirming creates a redirect through the active
+`IRedirectProvider` and deletes the tracked URL. Spec: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md`.
+
+**Contract** (Core, public, `Umbraco.Community.PageNotFoundTracker.Core.Redirects`):
+
+- `IRedirectProvider`: `bool CanHandle(TrackedUrl url)` (decides the per-row `canCreateRedirect` flag and guards the
+  endpoint) and `Task<RedirectResult> CreateAsync(TrackedUrl url, JsonElement? payload, CancellationToken ct)`.
+  `RedirectResult(Succeeded, Message)` with `Success()` / `Failure(message)`; the message is shown to the editor inline.
+  The provider must be singleton-compatible (the list controller asks `CanHandle` for every row).
+- `ITrackedUrlRedirectService.CreateAsync(int trackedUrlId, JsonElement? payload, ct)` returns
+  `CreateRedirectOutcome(Status, Message)`, `Status` = `Created`, `CreatedRecordNotRemoved`, `NotFound`, `NotSupported`,
+  `Failed`. Internal default: `TrackedUrlRedirectService` (`AddUnique`). Flow: load the row (`GetByIdAsync`), else
+  `NotFound`; `CanHandle` false gives `NotSupported`; `CreateAsync` failure or a (non-cancellation) exception gives
+  `Failed` (exceptions are logged and answered with a generic text, never leaked); then `ITrackedUrlRemover.DeleteAsync`;
+  a delete that throws gives `CreatedRecordNotRemoved` with a fixed text (the redirect exists, the row stays); a delete
+  that finds the row already gone counts as `Created`.
+- `ITrackedUrlRemover.DeleteAsync(TrackedUrl, ct)` (Core, `AddUnique`, default `TrackedUrlRemover`) runs inside
+  `ITrackingFlusher.RunExclusiveAsync` (the flush service's own lock): it first `TrackingQueue.Discard`s the hits still
+  queued, pending, retrying or in flight for that identity (`UrlHash` + `Domain` + `Culture`), then `ExecuteDeleteAsync`
+  by id. So a flush cannot bring the row back and a flush never runs half-way through a delete. Hits for that URL that
+  arrive after the delete create a new row (legitimate). Known, accepted limit: the lock and the queue are per process;
+  with several servers another server's queued hits for the same identity can recreate the row after the delete (it
+  shows up as a new row; creating the redirect again replaces the existing one).
+
+**Default provider** `UmbracoRedirectProvider` (Infrastructure, internal, `AddUnique`), built on Umbraco's
+`IRedirectUrlService` (the "Redirect URL Management" dashboard shows the result and lets editors remove it). Facts
+verified against Umbraco 17.8 (`RedirectOrderingTests`, `UmbracoRedirectProviderTests` in Integration.Tests):
+
+- Payload `{ "targetKey": "<document key>" }`. A missing, garbage or empty-guid payload, or a target that is not published
+  (`IPublishedContentCache.GetByIdAsync(key, false)` is null), gives a `Failure` with a readable message. A variant target
+  published only in another culture is accepted (the check is not culture aware).
+- `CanHandle` = not a file and no `?` in the URL. Query strings are NOT honoured by Umbraco's redirect lookup (it matches
+  the decoded absolute path only; a route registered with `?x=1` never matches), so rows whose stored URL has a `?`
+  (tracking with `IncludeQueryString` on) are unsupported: no action, and the endpoint answers 409.
+- Route format (`RedirectRouteBuilder`): no domain: `/<relativePath>`; with a domain: `"<domainRootContentId>" + relativePath`
+  (the relative path starts with `/`, e.g. `1234/old-page`). The domain is found by its trimmed, lower-cased name in
+  `IDomainCache.GetAll(false)`; several same-name domains are told apart by the row's culture, no match gives a failure
+  naming the domain. The culture is registered lower-case (`en-us`), an empty culture as null (matches every culture; a
+  culture-specific entry wins over a culture-less one).
+- An existing redirect with the same route and culture is replaced (deleted, then registered). It is deleted **by key**:
+  `IRedirectUrlService.Delete(IRedirectUrl)` throws an `InvalidCastException` in 17.8 (int id cast to a Guid).
+- Umbraco has NO setting that disables applying redirects. `Umbraco:CMS:WebRouting:DisableRedirectUrlTracking` only stops
+  Umbraco from creating redirects on rename or move. The spec's "fail when redirect handling is switched off" is
+  therefore not implementable and not implemented; do not document it as a feature.
+- Redirects apply before spec 2's last-chance finder: a registered missing path answers 301 to the target (the visitor's
+  query string is appended), other missing paths still get the 404 page. The `Location` is Umbraco's URL of the target
+  (`/about/`, `/sitea/about/` under an alias domain). Request path matching was case-insensitive on SQLite (SQL Server
+  not verified).
+
+**Endpoint** (BackOffice, base `/umbraco/pagenotfoundtracker/api/v1`, policy `PageNotFoundTracker.DashboardAccess`):
+
+| Operation ID | Route | Body | Answers |
+|---|---|---|---|
+| `CreateTrackedUrlRedirect` | `POST tracked-urls/{id:int}/redirect` | `{ "payload": <any JSON, or absent> }` | 200 `{ recordRemoved, message }`; 404 not found; 409 not supported (file row, query string row, provider says no); 422 provider failure (problem `detail` is the provider's message); 503 unavailable; 401/403 |
+
+`recordRemoved: false` (status `CreatedRecordNotRemoved`) means the redirect exists but the row could not be deleted;
+`message` says so and the client shows a warning toast. List items carry `canCreateRedirect` (the provider's `CanHandle`
+for that row), which drives the action's visibility.
+
+**Replacing the provider.** A composer after the anchor, `AddUnique` (see Composer order); the redirect service, the
+endpoint and the client keep working. Minimal example:
+
+```csharp
+public sealed class MyRedirectProvider : IRedirectProvider
+{
+    public bool CanHandle(TrackedUrl url) => !url.IsFile;
+
+    public Task<RedirectResult> CreateAsync(TrackedUrl url, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        // payload is whatever the custom form returned. url.RelativePath, url.Domain and url.Culture identify the
+        // request; return RedirectResult.Failure(message) to show a message inline.
+        return Task.FromResult(RedirectResult.Success());
+    }
+}
+
+[ComposeAfter(typeof(PageNotFoundTrackerComposer))]
+public sealed class MyRedirectComposer : IComposer
+{
+    public void Compose(IUmbracoBuilder builder) =>
+        builder.Services.AddUnique<IRedirectProvider, MyRedirectProvider>();
+}
+```
+
+`CustomProviderReplacementTests` (Integration) prove this in the real composition with real backoffice tokens.
+
+**Replacing the form (client).** The modal hosts `<umb-extension-slot type="pnftRedirectForm" single>`: of all permitted
+`pnftRedirectForm` manifests the one with the highest `weight` wins (the framework sorts `b.weight - a.weight` and
+`single` keeps the first; conditions and `overwrites` are honoured). The default form has weight **-100**, so a form with
+the default weight 0 already replaces it. The contract (`src/redirect/redirect-form.extension.ts`,
+`PnftRedirectFormElement`): a custom element with a `trackedUrl` property (the row) and
+`getPayload(): Promise<unknown | undefined>`, which resolves to the payload sent as `payload`, or `undefined` when the
+form is invalid (the form shows its own message and nothing is sent). The form never calls the API. The default form
+returns `{ targetKey }` (a `umb-input-document`, max 1, required).
+
+```ts
+// in your extension's manifests
+{
+  type: 'pnftRedirectForm',
+  alias: 'My.RedirectForm',
+  name: 'My redirect form',
+  weight: 10, // anything above -100 beats the default form
+  element: () => import('./my-redirect-form.element.js'),
+}
+```
+
+```ts
+export class MyRedirectFormElement extends UmbLitElement {
+  @property({ attribute: false }) trackedUrl?: { url: string; relativePath: string; domain: string; culture: string };
+
+  async getPayload(): Promise<unknown | undefined> {
+    return this._valid ? { someField: this._value } : undefined;
+  }
+}
+export default MyRedirectFormElement; // the element loader needs a default export
+```
+
+The modal (`Pnft.Modal.CreateRedirect`) shows 409/422 problem `detail` inline (`pnft-redirect-error`), keeps Confirm
+disabled while a request runs, and on success closes with `{ removed, message }`; the action then reloads the list and
+shows a success toast (a warning toast when `removed` is false). A 404 from the endpoint shows the client's own text,
+because Umbraco's error interceptor replaces 404 problem details.
+
+**Data marks** (`src/redirect/data-marks.ts`, copied in `tests/redirect.spec.ts`: change both together):
+`pnft-create-redirect-modal`, `pnft-redirect-confirm`, `pnft-redirect-cancel`, `pnft-redirect-error`,
+`pnft-redirect-target-picker`, `pnft-redirect-target-required`, `pnft-redirect-summary`; the row button is Umbraco's
+`entity-action:Pnft.EntityAction.TrackedUrl.CreateRedirect`.
+
+**Client regeneration.** `npm run generate-client` cleans `src/api/` (it deleted the hand-written `client-ready.ts` and
+rewrote core files with line-ending-only diffs), so `client-ready.ts` now lives in `src/client-ready.ts`. After
+regenerating, commit only the real changes (`index.ts`, `sdk.gen.ts`, `types.gen.ts`) and revert the line-ending-only
+ones with `git checkout`.
+
+**Tests.** Unit: `RedirectRouteBuilderTests`, `UmbracoRedirectProviderTests`, `TrackedUrlRedirectServiceTests`
+(Infrastructure.Tests), `CreateTrackedUrlRedirectControllerTests` (BackOffice.Tests). Integration: `RedirectOrderingTests`
+(Umbraco behaviour spike), `UmbracoRedirectProviderTests` (real `IRedirectUrlService`, domain and culture routes),
+`CustomProviderReplacementTests` (a custom provider replaces the default), plus the create endpoint, the list flag and the
+remover (SQLite; SQL Server where `PNFT_SQLSERVER_CONNECTION` is set). Vitest: `redirect.service`, `can-create-redirect`,
+`tracked-url.mapping`, `manifests` (the default form is a `pnftRedirectForm` with weight below 0). E2E
+`tests/redirect.spec.ts` (single-site, needs `FlushInterval=00:00:01`): a `.css` row has no action, cancel keeps the row
+and Confirm without a page shows the required message, and creating a redirect to About removes the row and the URL
+answers 301 to `/about/`. The picker is driven through its shadow DOM (`umb-document-picker-modal`, the caret of
+`uui-menu-item[label="Home"]`, then `uui-menu-item[label="About"]`): re-check on an Umbraco upgrade.
+
+**Manual checks** (spec 5, real API with a client-credentials token, results read from the profile's URLs):
+multi-site-aliases: `/siteA/old-a` and `/siteB/old-b` answer 301 to each site's own About, and the same relative path
+`/old-both` on both sites redirects to different targets per site; multi-language: `/en/old-x`, `/nl/old-x` and
+`/fr/old-x` answer 301 to `/en/about/`, `/nl/over-ons/` and `/fr/a-propos/` (the right culture). Not checked: the
+`multi-site-hostnames` and `sql-server` profiles (there is no redirect-specific SQL Server code; the delete runs on the
+shared EF Core context).
+
+**Not verified in a browser:** the warning toast for `recordRemoved: false` (needs a failing delete), the 404/503/network
+error texts of the modal (Vitest only) and Confirm being disabled while the request is in flight (too fast to observe;
+the code sets `disabled` and `state="waiting"`). Not built: a picker filter for published pages (an unpublished page is
+selectable; the provider rejects it with the inline message).
 
 ## Tests
 
@@ -755,7 +912,7 @@ multi-language profiles (single-site has no domains).
   `.env.example` to `.env` (gitignored). The site must be running on single-site (44401) with
   `Umbraco__Community__PageNotFoundTracker__FlushInterval=00:00:01` (see Dashboard). Umbraco marks
   elements with `data-mark` (configured as `testIdAttribute`). `tests/not-found.spec.ts` covers spec 2,
-  `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
+  `tests/redirect.spec.ts` the create redirect flow (spec 5), `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
   smoke test (placeholder dashboard in Settings) is gone with the placeholder.
 
 ## CI and repository settings
