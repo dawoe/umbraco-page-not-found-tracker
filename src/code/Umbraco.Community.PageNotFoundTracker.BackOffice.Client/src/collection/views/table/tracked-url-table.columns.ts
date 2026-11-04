@@ -1,25 +1,16 @@
 import type { TrackedUrlSortColumn } from '../../../api/index.js';
 import { PNFT_SORT_MARKS } from '../../data-marks.js';
+import { columnAliasIn, sortColumnIn, type PnftTableColumnDefinition } from './table-columns.js';
 
 // The columns of the tracked URL table and their sort mapping. Pure: no backoffice runtime imports.
+
+export { PNFT_ENTITY_ACTIONS_COLUMN, formatLocalDateTime } from './table-columns.js';
 
 /** The alias of a data column of the table (also the key of its sort mark). */
 export type PnftColumnAlias = keyof typeof PNFT_SORT_MARKS;
 
 /** One data column of the table. */
-export interface PnftColumnDefinition {
-  alias: PnftColumnAlias;
-  /** The localization key of the header. */
-  labelKey: string;
-  /** The `data-mark` of the header. */
-  sortMark: string;
-  /** The API sort column. */
-  sortColumn: TrackedUrlSortColumn;
-  align?: 'left' | 'center' | 'right';
-}
-
-/** The alias of the entity actions column (no header, no sorting). */
-export const PNFT_ENTITY_ACTIONS_COLUMN = 'entityActions';
+export type PnftColumnDefinition = PnftTableColumnDefinition<PnftColumnAlias, TrackedUrlSortColumn>;
 
 /** The data columns in display order (spec: URL, domain, culture, type, first seen, last seen, hits). */
 export const PNFT_COLUMNS: ReadonlyArray<PnftColumnDefinition> = [
@@ -44,21 +35,10 @@ export const PNFT_COLUMNS: ReadonlyArray<PnftColumnDefinition> = [
 
 /** The API sort column of a table column alias, undefined for a column that does not sort. */
 export function sortColumnOf(alias: string): TrackedUrlSortColumn | undefined {
-  return PNFT_COLUMNS.find((column) => column.alias === alias)?.sortColumn;
+  return sortColumnIn(PNFT_COLUMNS, alias);
 }
 
 /** The table column alias of an API sort column. */
 export function columnAliasOf(sortColumn: TrackedUrlSortColumn | undefined): PnftColumnAlias | undefined {
-  return PNFT_COLUMNS.find((column) => column.sortColumn === sortColumn)?.alias;
-}
-
-/** Renders a UTC ISO 8601 timestamp in the user's locale and time zone; invalid or missing gives ''. */
-export function formatLocalDateTime(iso: string | undefined): string {
-  if (!iso) {
-    return '';
-  }
-
-  const date = new Date(iso);
-
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+  return columnAliasIn(PNFT_COLUMNS, sortColumn);
 }
