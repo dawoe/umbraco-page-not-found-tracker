@@ -84,7 +84,8 @@ internal sealed class BlockSnapshotProvider : IBlockSnapshotProvider
             || this.runtimeState.Level != RuntimeLevel.Run
             || this.initialAttempt.Task.IsCompleted)
         {
-            return new ValueTask<BlockSnapshot>(BlockSnapshot.Empty);
+            // Re-read: a load may have published its snapshot between the first read and the completed-check above.
+            return new ValueTask<BlockSnapshot>(Volatile.Read(ref this.current) ?? BlockSnapshot.Empty);
         }
 
         return this.WaitForInitialLoadAsync(cancellationToken);

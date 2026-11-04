@@ -22,6 +22,7 @@ internal sealed class PageNotFoundTrackerStartupFilter : IStartupFilter
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
         app =>
         {
+            app.UseBlocking();
             app.UseFileNotFoundHandling();
             next(app);
         };
