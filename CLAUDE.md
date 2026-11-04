@@ -771,8 +771,8 @@ A "Create redirect" row action (page rows only) opens a modal; confirming create
 verified against Umbraco 17.8 (`RedirectOrderingTests`, `UmbracoRedirectProviderTests` in Integration.Tests):
 
 - Payload `{ "targetKey": "<document key>" }`. A missing, garbage or empty-guid payload, or a target that is not published
-  (`IPublishedContentCache.GetByIdAsync(key, false)` is null), gives a `Failure` with a readable message. A variant target
-  published only in another culture is accepted (the check is not culture aware).
+  (`IPublishedContentCache.GetByIdAsync(key, false)` is null), gives a `Failure` with a readable message. For a record with
+  a culture, a variant target that is not published in that culture is refused too (`IsInvariantOrHasCulture`).
 - `CanHandle` = not a file and no `?` in the URL. Query strings are NOT honoured by Umbraco's redirect lookup (it matches
   the decoded absolute path only; a route registered with `?x=1` never matches), so rows whose stored URL has a `?`
   (tracking with `IncludeQueryString` on) are unsupported: no action, and the endpoint answers 409.
