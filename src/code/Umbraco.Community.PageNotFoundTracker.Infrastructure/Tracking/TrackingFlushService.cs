@@ -90,6 +90,22 @@ internal sealed class TrackingFlushService : BackgroundService, ITrackingFlusher
     }
 
     /// <inheritdoc />
+    public async Task RunExclusiveAsync(Func<Task> action, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        await this.flushLock.WaitAsync(cancellationToken);
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            this.flushLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         await base.StopAsync(cancellationToken);

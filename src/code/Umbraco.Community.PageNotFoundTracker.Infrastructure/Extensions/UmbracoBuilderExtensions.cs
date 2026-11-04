@@ -41,6 +41,7 @@ internal static class UmbracoBuilderExtensions
         builder.Services.AddUnique<IDashboardAccess, DashboardAccess>();
 
         builder.Services.AddUnique<ITrackedUrlQueryService, TrackedUrlQueryService>();
+        builder.Services.AddUnique<ITrackedUrlRemover, TrackedUrlRemover>();
 
         // TimeProvider is a shared framework service, not ours: keep a registration the site already made.
         builder.Services.TryAddSingleton(TimeProvider.System);

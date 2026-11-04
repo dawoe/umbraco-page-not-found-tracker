@@ -13,4 +13,13 @@ internal interface ITrackingFlusher
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A task that completes when the flush is done.</returns>
     Task FlushAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Runs an action while holding the flush lock, so no flush batch is in flight while it runs (a batch in progress
+    /// finishes first, and no new one starts until the action is done).
+    /// </summary>
+    /// <param name="action">The action.</param>
+    /// <param name="cancellationToken">The cancellation token for waiting on the lock.</param>
+    /// <returns>A task that completes when the action is done.</returns>
+    Task RunExclusiveAsync(Func<Task> action, CancellationToken cancellationToken);
 }
