@@ -76,7 +76,8 @@ internal static class UmbracoBuilderExtensions
     {
         builder.Services.AddUnique<IBlockSnapshotProvider, BlockSnapshotProvider>();
         builder.Services.AddUnique<IBlockRuleService, BlockRuleService>();
-        builder.Services.AddUnique<IBlockRuleChangeNotifier, NoOpBlockRuleChangeNotifier>();
+        builder.Services.AddUnique<IBlockRuleChangeNotifier, DistributedBlockRuleChangeNotifier>();
+        builder.CacheRefreshers().Add<BlockRuleCacheRefresher>();
         builder.Services.AddHostedService<BlockSnapshotService>();
         builder.AddNotificationAsyncHandler<DomainCacheRefresherNotification, BlockSnapshotInvalidationHandler>();
         builder.AddNotificationAsyncHandler<LanguageCacheRefresherNotification, BlockSnapshotInvalidationHandler>();

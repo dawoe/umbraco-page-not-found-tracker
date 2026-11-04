@@ -353,16 +353,13 @@ internal sealed class BlockRuleService : IBlockRuleService
 
     private async Task<bool> RemoveMatchingRecordsAsync(string pattern, string domain, string culture, CancellationToken cancellationToken)
     {
-        var compiled = CompiledBlockPattern.Compile(pattern);
+        Func<TrackedUrlHit, bool> matches = BlockHitMatcher.Create(pattern, domain, culture);
         try
         {
             await this.flusher.RunExclusiveAsync(
                 async () =>
                 {
-                    this.queue.DiscardMatching(hit =>
-                        (domain.Length == 0 || string.Equals(hit.Domain, domain, StringComparison.OrdinalIgnoreCase))
-                        && (culture.Length == 0 || string.Equals(hit.Culture, culture, StringComparison.OrdinalIgnoreCase))
-                        && compiled.IsMatch(hit.RelativePath));
+                    this.queue.DiscardMatching(matches);
 
                     await using PageNotFoundTrackerDbContext dbContext = await this.CreateContextAsync(cancellationToken);
                     await WhereMatches(dbContext.TrackedUrls, pattern, domain, culture).ExecuteDeleteAsync(cancellationToken);
