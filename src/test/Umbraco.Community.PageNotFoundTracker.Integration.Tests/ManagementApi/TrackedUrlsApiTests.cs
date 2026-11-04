@@ -3,6 +3,7 @@
 using System.Linq.Expressions;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,7 @@ using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Core.Strings;
 using Umbraco.Cms.Tests.Integration.ManagementApi;
 using Umbraco.Community.PageNotFoundTracker.BackOffice.Controllers;
+using Umbraco.Community.PageNotFoundTracker.Core.Redirects;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
@@ -175,11 +177,104 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
     }
 
     /// <summary>
-    /// The package's OpenAPI document holds the three operations with stable IDs.
+    /// The list flags rows the active provider can redirect: a page row yes, a file row no.
     /// </summary>
     /// <returns>A task.</returns>
     [Test]
-    public async Task OpenApiDocument_ContainsTheThreeOperationIds()
+    public async Task List_CanCreateRedirect_FalseForFileRow()
+    {
+        await this.SeedAsync();
+        await this.AuthenticateClientAsync(this.Client, "flag-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+
+        using HttpResponseMessage response = await this.Client.GetAsync(new Uri(ListUrl + "?take=10", UriKind.Relative));
+        string body = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), body);
+        JsonArray items = JsonNode.Parse(body)!["items"]!.AsArray();
+        Assert.That(items.Select(i => (i!["url"]!.GetValue<string>(), i["canCreateRedirect"]!.GetValue<bool>())), Is.EqualTo(new[] { ("/Popular", true), ("/rare.pdf", false) }));
+    }
+
+    /// <summary>
+    /// An anonymous caller gets 401 from the create redirect endpoint.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task CreateRedirect_Anonymous_Returns401()
+    {
+        using HttpResponseMessage response = await this.PostRedirectAsync(this.Client, 1);
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+    }
+
+    /// <summary>
+    /// A user whose only group is not in the setting gets 403 from the create redirect endpoint.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task CreateRedirect_GroupOutsideSetting_Returns403()
+    {
+        await this.AuthenticateWithSectionsAsync("pnftRedirectOutside", Constants.Applications.Content);
+
+        using HttpResponseMessage response = await this.PostRedirectAsync(this.Client, 1);
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+    }
+
+    /// <summary>
+    /// An unknown id is a 404.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task CreateRedirect_UnknownId_Returns404()
+    {
+        await this.SeedAsync();
+        await this.AuthenticateClientAsync(this.Client, "redirect404-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+
+        using HttpResponseMessage response = await this.PostRedirectAsync(this.Client, 999999);
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+    }
+
+    /// <summary>
+    /// With a provider that accepts the row, the endpoint answers 200 and the tracked URL is gone; a file row is a 409.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task CreateRedirect_WithFakeProvider_Returns200AndRemovesRow_FileIs409()
+    {
+        await this.SeedAsync();
+        await this.AuthenticateClientAsync(this.Client, "redirect200-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+        int pageId;
+        int fileId;
+        var factory = this.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>();
+        await using (PageNotFoundTrackerDbContext db = await factory.CreateDbContextAsync())
+        {
+            pageId = await db.TrackedUrls.Where(u => !u.IsFile).Select(u => u.Id).SingleAsync();
+            fileId = await db.TrackedUrls.Where(u => u.IsFile).Select(u => u.Id).SingleAsync();
+        }
+
+        using HttpResponseMessage file = await this.PostRedirectAsync(this.Client, fileId);
+        using HttpResponseMessage page = await this.PostRedirectAsync(this.Client, pageId);
+        string body = await page.Content.ReadAsStringAsync();
+
+        Assert.That(page.StatusCode, Is.EqualTo(HttpStatusCode.OK), body);
+        JsonNode json = JsonNode.Parse(body)!;
+        await using PageNotFoundTrackerDbContext check = await factory.CreateDbContextAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(file.StatusCode, Is.EqualTo(HttpStatusCode.Conflict));
+            Assert.That(json["recordRemoved"]!.GetValue<bool>(), Is.True);
+            Assert.That(check.TrackedUrls.Any(u => u.Id == pageId), Is.False);
+            Assert.That(check.TrackedUrls.Any(u => u.Id == fileId), Is.True);
+        });
+    }
+
+    /// <summary>
+    /// The package's OpenAPI document holds the operations with stable IDs.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task OpenApiDocument_ContainsTheOperationIds()
     {
         using HttpResponseMessage response = await this.Client.GetAsync(new Uri(OpenApiDocumentUrl, UriKind.Relative));
         string body = await response.Content.ReadAsStringAsync();
@@ -197,6 +292,7 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
                 (ListUrl, "GetTrackedUrls"),
                 (FilterOptionsUrl, "GetTrackedUrlFilterOptions"),
                 (AccessUrl, "GetDashboardAccess"),
+                (ListUrl + "/{id}/redirect", "CreateTrackedUrlRedirect"),
             }));
         Assert.Multiple(() =>
         {
@@ -215,6 +311,21 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
         // The test server's entry assembly is Umbraco's test assembly, so MVC does not discover the package's controllers
         // by itself (a real site gets an ApplicationPart attribute for every referenced assembly with controllers).
         mvcBuilder.AddApplicationPart(typeof(TrackedUrlsControllerBase).Assembly);
+    }
+
+    /// <inheritdoc />
+    protected override void ConfigureTestServices(IServiceCollection services)
+    {
+        base.ConfigureTestServices(services);
+
+        // A provider that accepts page rows, so the endpoint can be exercised without a published target page.
+        services.AddSingleton<IRedirectProvider, FakeRedirectProvider>();
+    }
+
+    private async Task<HttpResponseMessage> PostRedirectAsync(HttpClient client, int id)
+    {
+        using var content = new StringContent("{}", Encoding.UTF8, "application/json");
+        return await client.PostAsync(new Uri($"{ListUrl}/{id}/redirect", UriKind.Relative), content);
     }
 
     private HttpClient CreateClient() =>
@@ -307,5 +418,18 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
                 LastSeen = new DateTime(2026, 11, 1, 9, 0, 0, DateTimeKind.Utc),
             });
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// A provider that accepts every row that is not a file and creates redirects without doing anything.
+    /// </summary>
+    private sealed class FakeRedirectProvider : IRedirectProvider
+    {
+        /// <inheritdoc />
+        public bool CanHandle(TrackedUrl url) => !url.IsFile;
+
+        /// <inheritdoc />
+        public Task<RedirectResult> CreateAsync(TrackedUrl url, System.Text.Json.JsonElement? payload, CancellationToken cancellationToken) =>
+            Task.FromResult(RedirectResult.Success());
     }
 }

@@ -51,4 +51,9 @@ public sealed class TrackedUrlResponseModel
     /// Gets the UTC time of the last hit (serialised as ISO 8601 with <c>Z</c>).
     /// </summary>
     public DateTime LastSeen { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the active redirect provider can create a redirect for this URL.
+    /// </summary>
+    public bool CanCreateRedirect { get; init; }
 }
