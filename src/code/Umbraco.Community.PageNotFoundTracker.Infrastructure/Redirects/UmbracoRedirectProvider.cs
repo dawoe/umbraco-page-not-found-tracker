@@ -49,6 +49,11 @@ internal sealed class UmbracoRedirectProvider : IRedirectProvider
     /// <inheritdoc />
     public async Task<RedirectResult> CreateAsync(TrackedUrl url, JsonElement? payload, CancellationToken cancellationToken)
     {
+        if (!this.CanHandle(url))
+        {
+            return RedirectResult.Failure("This URL cannot be redirected: files and URLs with a query string are not supported.");
+        }
+
         if (!TryReadTargetKey(payload, out var targetKey))
         {
             return RedirectResult.Failure(InvalidPayloadMessage);
@@ -123,7 +128,7 @@ internal sealed class UmbracoRedirectProvider : IRedirectProvider
             return matches.FirstOrDefault();
         }
 
-        return matches.FirstOrDefault(d => string.Equals(d.Culture, url.Culture, StringComparison.OrdinalIgnoreCase))
-            ?? matches[0];
+        // Several domains share the name: only the one with the record's culture is meant; none matching is no match.
+        return matches.FirstOrDefault(d => string.Equals(d.Culture, url.Culture, StringComparison.OrdinalIgnoreCase));
     }
 }

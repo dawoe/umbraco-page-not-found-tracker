@@ -96,6 +96,61 @@ internal sealed class UmbracoRedirectProviderTests
     }
 
     /// <summary>
+    /// With several domains of one name and none for the record's culture, creation fails.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Two_domains_same_name_no_culture_match_fails()
+    {
+        this.domains.Setup(d => d.GetAll(false)).Returns([
+            new Domain(1, "localhost:1/en", 100, "en-US", false, 0),
+            new Domain(2, "localhost:1/en", 200, "nl-NL", false, 0)]);
+
+        RedirectResult result = await this.provider.CreateAsync(Row("/old", "localhost:1/en", "fr-FR"), Payload(TargetKey), CancellationToken.None);
+
+        Assert.That(result.Succeeded, Is.False);
+        this.redirects.Verify(r => r.Register(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    /// <summary>
+    /// A file row fails and nothing is registered, even when the provider is called directly.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task File_row_fails_without_registering()
+    {
+        var row = new TrackedUrl { Url = "/a.css", RelativePath = "/a.css", IsFile = true };
+
+        RedirectResult result = await this.provider.CreateAsync(row, Payload(TargetKey), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Message, Is.Not.Empty);
+        });
+        this.redirects.Verify(r => r.Register(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    /// <summary>
+    /// A query string row fails and nothing is registered, even when the provider is called directly.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Query_string_row_fails_without_registering()
+    {
+        var row = new TrackedUrl { Url = "/a?x=1", RelativePath = "/a?x=1" };
+
+        RedirectResult result = await this.provider.CreateAsync(row, Payload(TargetKey), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Message, Is.Not.Empty);
+        });
+        this.redirects.Verify(r => r.Register(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    /// <summary>
     /// A record without a culture registers a culture-less redirect.
     /// </summary>
     /// <returns>A task.</returns>
@@ -134,6 +189,7 @@ internal sealed class UmbracoRedirectProviderTests
         RedirectResult result = await this.provider.CreateAsync(Row("/old", "localhost:1/sitea", string.Empty), Payload(TargetKey), CancellationToken.None);
 
         Assert.That(result.Succeeded, Is.False);
+        this.redirects.Verify(r => r.Register(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 
     /// <summary>
@@ -162,6 +218,7 @@ internal sealed class UmbracoRedirectProviderTests
         RedirectResult result = await this.provider.CreateAsync(Row("/old", string.Empty, string.Empty), Payload(key), CancellationToken.None);
 
         Assert.That(result.Succeeded, Is.False);
+        this.redirects.Verify(r => r.Register(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 
     /// <summary>
@@ -188,6 +245,7 @@ internal sealed class UmbracoRedirectProviderTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Message, Is.Not.Empty);
         });
+        this.redirects.Verify(r => r.Register(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
     }
 
     /// <summary>
