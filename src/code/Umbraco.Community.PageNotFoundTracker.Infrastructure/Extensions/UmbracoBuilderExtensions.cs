@@ -45,6 +45,7 @@ internal static class UmbracoBuilderExtensions
         builder.Services.AddUnique<ITrackedUrlQueryService, TrackedUrlQueryService>();
         builder.Services.AddUnique<ITrackedUrlRemover, TrackedUrlRemover>();
         builder.Services.AddUnique<ITrackedUrlRedirectService, TrackedUrlRedirectService>();
+        builder.Services.AddUnique<IRedirectProvider, UmbracoRedirectProvider>();
 
         // TimeProvider is a shared framework service, not ours: keep a registration the site already made.
         builder.Services.TryAddSingleton(TimeProvider.System);
