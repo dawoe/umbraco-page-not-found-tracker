@@ -51,7 +51,11 @@ public sealed class CreateBlockRuleController(IBlockRuleService ruleService, ITr
             cancellationToken);
 
         return outcome.Status == CreateBlockRuleStatus.Saved
-            ? this.Ok(new CreateBlockRuleResponseModel { RecordsRemoved = outcome.RecordsRemoved, Message = outcome.Message })
+            ? this.Ok(new CreateBlockRuleResponseModel
+            {
+                RecordsRemoved = outcome.RecordsRemoved,
+                Message = outcome.Message ?? (outcome.RecordsRemoved ? null : "The rule was saved, but the tracked URLs it covers could not be removed."),
+            })
             : this.InvalidRequest("Invalid block rule", outcome.Message ?? "The block rule is not valid.");
     }
 }

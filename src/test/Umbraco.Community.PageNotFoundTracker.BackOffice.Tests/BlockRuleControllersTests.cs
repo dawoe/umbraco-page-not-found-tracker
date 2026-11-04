@@ -186,6 +186,27 @@ internal sealed class BlockRuleControllersTests
     }
 
     /// <summary>
+    /// A saved rule whose records were not removed always carries a message for the editor.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Create_SavedRecordsNotRemovedWithoutMessage_GetsFallbackMessage()
+    {
+        this.service
+            .Setup(s => s.CreateAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreateBlockRuleOutcome(CreateBlockRuleStatus.Saved, null, false));
+
+        IActionResult result = await this.CreateController().CreateBlockRule(new CreateBlockRuleRequestModel { Pattern = "/a*", StatusCode = 410 }, CancellationToken.None);
+
+        var model = (CreateBlockRuleResponseModel)((OkObjectResult)result).Value!;
+        Assert.Multiple(() =>
+        {
+            Assert.That(model.RecordsRemoved, Is.False);
+            Assert.That(model.Message, Is.Not.Null.And.Not.Empty);
+        });
+    }
+
+    /// <summary>
     /// An invalid outcome is a 400 with the service's message as detail.
     /// </summary>
     /// <returns>A task.</returns>

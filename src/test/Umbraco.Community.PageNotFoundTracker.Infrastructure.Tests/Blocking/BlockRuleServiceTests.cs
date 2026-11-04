@@ -265,6 +265,7 @@ internal sealed class BlockRuleServiceTests
         {
             Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Saved));
             Assert.That(outcome.RecordsRemoved, Is.False);
+            Assert.That(outcome.Message, Is.EqualTo(BlockRuleService.RecordsNotRemovedMessage));
             Assert.That(await this.RulesAsync(), Has.Count.EqualTo(1));
             Assert.That(this.calls, Is.EqualTo(new[] { "refresh", "notify:Saved", "exclusive" }));
         });

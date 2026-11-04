@@ -70,6 +70,54 @@ internal sealed class BlockRulesApiTests : ManagementApiTest<GetBlockRulesContro
     }
 
     /// <summary>
+    /// An anonymous caller gets 401 from delete and the scope options.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Anonymous_DeleteAndScopeOptions_Return401()
+    {
+        using HttpResponseMessage delete = await this.Client.DeleteAsync(new Uri(RulesUrl + "/1", UriKind.Relative));
+        using HttpResponseMessage options = await this.Client.GetAsync(new Uri(RulesUrl + "/scope-options", UriKind.Relative));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(delete.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+            Assert.That(options.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+        });
+    }
+
+    /// <summary>
+    /// A user outside the configured groups gets 403 from delete.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task GroupOutsideSetting_Delete_Returns403()
+    {
+        await this.AuthenticateWithSectionsAsync("pnftRulesOutsideDelete", Constants.Applications.Content);
+
+        using HttpResponseMessage delete = await this.Client.DeleteAsync(new Uri(RulesUrl + "/1", UriKind.Relative));
+
+        Assert.That(delete.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+    }
+
+    /// <summary>
+    /// A malformed or empty body is a 400, never a 500.
+    /// </summary>
+    /// <param name="body">The raw body.</param>
+    /// <returns>A task.</returns>
+    [TestCase("not json {")]
+    [TestCase("")]
+    public async Task Create_MalformedOrEmptyBody_Returns400(string body)
+    {
+        await this.SignInAsync("rules-badbody@umbraco.com");
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using HttpResponseMessage response = await this.Client.PostAsync(new Uri(RulesUrl, UriKind.Relative), content);
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest), await response.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
     /// Patterns the service rejects are a 400 with the message in <c>detail</c>.
     /// </summary>
     /// <param name="pattern">The pattern.</param>

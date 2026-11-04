@@ -26,6 +26,11 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Blocking;
 internal sealed class BlockRuleService : IBlockRuleService
 {
     /// <summary>
+    /// The message when a rule was saved but the tracked records it covers could not be removed.
+    /// </summary>
+    internal const string RecordsNotRemovedMessage = "The rule was saved, but the tracked URLs it covers could not be removed.";
+
+    /// <summary>
     /// The largest page size the list returns.
     /// </summary>
     internal const int MaxTake = 100;
@@ -133,7 +138,10 @@ internal sealed class BlockRuleService : IBlockRuleService
         await this.NotifyAsync(new BlockRuleCachePayload(normalised, scopeDomain, scopeCulture, BlockRuleChange.Saved), cancellationToken);
 
         bool recordsRemoved = await this.RemoveMatchingRecordsAsync(normalised, scopeDomain, scopeCulture, cancellationToken);
-        return new CreateBlockRuleOutcome(CreateBlockRuleStatus.Saved, null, recordsRemoved);
+        return new CreateBlockRuleOutcome(
+            CreateBlockRuleStatus.Saved,
+            recordsRemoved ? null : RecordsNotRemovedMessage,
+            recordsRemoved);
     }
 
     /// <inheritdoc />
