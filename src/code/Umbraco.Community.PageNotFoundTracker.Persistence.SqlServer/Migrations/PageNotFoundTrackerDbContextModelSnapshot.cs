@@ -131,6 +131,8 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.SqlServer.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("LastSeen");
+
                     b.HasIndex("RelativePath");
 
                     b.HasIndex("UrlHash", "Domain", "Culture")

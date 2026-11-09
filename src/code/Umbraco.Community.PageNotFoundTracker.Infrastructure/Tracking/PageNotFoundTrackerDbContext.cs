@@ -39,6 +39,7 @@ public class PageNotFoundTrackerDbContext(DbContextOptions<PageNotFoundTrackerDb
             entity.Property(e => e.Culture).IsRequired().HasMaxLength(50).HasDefaultValue(string.Empty);
             entity.HasIndex(e => new { e.UrlHash, e.Domain, e.Culture }).IsUnique();
             entity.HasIndex(e => e.RelativePath);
+            entity.HasIndex(e => e.LastSeen);
         });
 
         modelBuilder.Entity<BlockRule>(entity =>
