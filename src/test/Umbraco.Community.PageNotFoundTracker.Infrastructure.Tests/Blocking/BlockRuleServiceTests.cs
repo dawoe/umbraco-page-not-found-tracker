@@ -646,6 +646,31 @@ internal sealed class BlockRuleServiceTests
     }
 
     /// <summary>
+    /// When the write fails and no colliding rule exists, the database failure is not a conflict: it propagates, the
+    /// rule is unchanged and nothing is refreshed, notified or discarded.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_database_failure_on_the_write_without_a_collision_is_rethrown()
+    {
+        await this.service.CreateAsync("/a", 410, string.Empty, string.Empty, CancellationToken.None);
+        int idA = (await this.RulesAsync()).Single().Id;
+        this.calls.Clear();
+        BlockRuleService failing = this.BuildServiceWithInterceptor(new FailRuleUpdateInterceptor());
+
+        Assert.ThrowsAsync<SqliteException>(() => failing.UpdateAsync(idA, "/b", 403, string.Empty, string.Empty, CancellationToken.None));
+
+        BlockRule rule = (await this.RulesAsync()).Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(rule.Id, Is.EqualTo(idA));
+            Assert.That(rule.Pattern, Is.EqualTo("/a"));
+            Assert.That(rule.StatusCode, Is.EqualTo(410));
+            Assert.That(this.calls, Is.Empty);
+        });
+    }
+
+    /// <summary>
     /// The scope options list the domain names lower-cased, distinct and sorted (wildcard domains excluded), and the
     /// language ISO codes.
     /// </summary>
@@ -839,6 +864,25 @@ internal sealed class BlockRuleServiceTests
             parameter.ParameterName = name;
             parameter.Value = value;
             command.Parameters.Add(parameter);
+        }
+    }
+
+    /// <summary>
+    /// Throws a database exception once, just before the first rule update is executed.
+    /// </summary>
+    private sealed class FailRuleUpdateInterceptor : DbCommandInterceptor
+    {
+        private bool fired;
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (!this.fired && IsRuleUpdate(command))
+            {
+                this.fired = true;
+                throw new SqliteException("boom", 1);
+            }
+
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
         }
     }
 }

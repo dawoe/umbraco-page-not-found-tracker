@@ -1155,7 +1155,7 @@ afterwards):
   `sql-server`.
 
 **Not verified:** the modal's visual layout (it renders off-screen in the automation pane; fields and messages were driven
-through the DOM), the `recordsRemoved: false` warning toast, the unblock 404/503/network texts (Vitest mapping only), the
+through the DOM), the edit modal's visual layout and its 404 ("rule no longer exists") text (the E2E tests drive the DOM and cover the 409 text), the `recordsRemoved: false` warning toast, the unblock 404/503/network texts (Vitest mapping only), the
 hostnames profile, and the upsert's duplicate-key retry (no seam to inject the race; untested).
 
 ## Retention (spec 8)

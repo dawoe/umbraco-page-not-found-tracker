@@ -192,7 +192,7 @@ export class PnftBlockRuleModalElement extends UmbModalBaseElement<PnftBlockRule
               id="status"
               data-mark=${PNFT_BLOCK_DATA_MARKS.statusCode}
               label=${this.localize.term('pageNotFoundTracker_columnStatusCode')}
-              .options=${buildStatusChoices(values.statusCode).map((code) => ({
+              .options=${buildStatusChoices(this.data?.statusCode ?? values.statusCode).map((code) => ({
                 name: PNFT_BLOCK_STATUS_CODES.includes(code) ? this.localize.term(`pageNotFoundTracker_status${code}`) : String(code),
                 value: String(code),
                 selected: code === values.statusCode,
@@ -217,7 +217,7 @@ export class PnftBlockRuleModalElement extends UmbModalBaseElement<PnftBlockRule
           <uui-button
             data-mark=${PNFT_BLOCK_DATA_MARKS.confirm}
             look="primary"
-            color="danger"
+            color=${this.data?.ruleId === undefined ? 'danger' : 'positive'}
             label=${this.localize.term(this.data?.ruleId === undefined ? 'pageNotFoundTracker_blockConfirm' : 'pageNotFoundTracker_saveRule')}
             .state=${this._submitting ? 'waiting' : undefined}
             ?disabled=${this._submitting}
