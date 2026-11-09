@@ -83,7 +83,7 @@ foreach ($page in $pages) {
             if ($null -eq $expected) {
                 $failures.Add("${relative}:${fenceLine}: region '$($Matches['id'])' not found in $($Matches['path'])")
             }
-            elseif ($expected -ne (Format-Block $blockLines)) {
+            elseif ($expected -cne (Format-Block $blockLines)) {
                 $failures.Add("${relative}:${fenceLine}: block differs from region '$($Matches['id'])' in $($Matches['path'])")
             }
         }

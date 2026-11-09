@@ -101,7 +101,8 @@ installing and reached its normal running state, so there is nothing to run by h
 ## An unsupported database
 
 The package ships tracking support for SQLite and SQL Server. On another database the site keeps working and shows
-your 404 page, but tracking is off and an error naming the database provider is logged at startup. You can add your
+your 404 page, but tracking and blocking are off, the dashboards show that the database is unsupported, and an error
+naming the database provider is logged at startup. You can add your
 own database support: see [Database providers](extending/database-providers.md).
 
 ## Several servers (load balancing)

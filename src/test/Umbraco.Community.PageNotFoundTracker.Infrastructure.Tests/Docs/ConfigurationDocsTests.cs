@@ -34,7 +34,7 @@ internal sealed class ConfigurationDocsTests
     }
 
     /// <summary>
-    /// The appsettings example on the page binds to the settings class, so a wrong name or type fails here.
+    /// The appsettings example on the page binds to the settings class, so a wrong name (an unknown key throws) or type fails here.
     /// </summary>
     [Test]
     public void Settings_ExampleAppsettings_BindsToSettingsClass()
@@ -46,7 +46,7 @@ internal sealed class ConfigurationDocsTests
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(example.Groups["json"].Value));
         var configuration = new ConfigurationBuilder().AddJsonStream(stream).Build();
 
-        var settings = configuration.GetSection(Constants.SectionName).Get<PageNotFoundTrackerSettings>();
+        var settings = configuration.GetSection(Constants.SectionName).Get<PageNotFoundTrackerSettings>(binder => binder.ErrorOnUnknownConfiguration = true);
 
         Assert.That(settings, Is.Not.Null, $"the example has no {Constants.SectionName} section");
         Assert.Multiple(() =>

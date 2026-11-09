@@ -15,7 +15,8 @@ depends on the section of the site the visitor was in.
 | `domain` | The Umbraco domain the caller already matched, or `null`. The resolver does not match domains itself |
 | result | `NotFoundPage(Content, Culture)`: the published page and the culture to render it in (`null` for the default language or an invariant page), or `null` |
 
-Returning `null` means "no page found": Umbraco's own 404 behaviour applies (its `Error404Collection` setting).
+Returning `null` means "no page found". For a missing page Umbraco's own 404 behaviour then applies (its
+`Error404Collection` setting). For a missing file the answer stays a plain 404 without a body.
 
 ## How the package uses it
 
@@ -23,7 +24,7 @@ Both paths ask the resolver: the page path through Umbraco's last-chance finder 
 middleware (see [How it works](../how-it-works.md)). An exception is logged and treated as "no page found". A client
 that disconnects while the resolver runs falls back to Umbraco's finder.
 
-The default resolver finds the root of the matched domain (or the first root without a domain), looks for a published
+The default resolver finds the root of the matched domain (or the first root of the content tree when no domain matched), looks for a published
 page of the configured document type among its children and then deeper in the tree, and uses the domain's culture
 (or the default language). A page that varies by culture without a published variant in that culture counts as not
 found.

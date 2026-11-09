@@ -59,7 +59,7 @@ What you may see instead of a list:
 |---|---|
 | Pattern | The URL pattern that is blocked, for example `/wp-admin/*` |
 | Status code | The answer visitors get: 403, 404 or 410 |
-| Domain, Culture | Where the rule applies. Empty means all domains or all cultures |
+| Domain, Culture | Where the rule applies. *All domains* and *All cultures* mean the rule has no limit |
 | Created | When the rule was added |
 
 The newest rule is on top. You can search patterns, filter on domain and culture, sort on any column and choose how

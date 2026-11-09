@@ -33,6 +33,7 @@ $page = "# T`n`n<!-- sample: src/A.cs#one -->`n``````csharp`nclass A`n{`n    int
 
 Invoke-Case 'matching block' @{ 'src/A.cs' = $source; 'docs/p.md' = $page } 0
 Invoke-Case 'block text differs' @{ 'src/A.cs' = $source; 'docs/p.md' = $page.Replace('int b;', 'int c;') } 1 'differs'
+Invoke-Case 'block differs only in letter case' @{ 'src/A.cs' = $source; 'docs/p.md' = $page.Replace('int b;', 'INT b;') } 1 'differs'
 Invoke-Case 'unknown id' @{ 'src/A.cs' = $source; 'docs/p.md' = $page.Replace('#one', '#two') } 1 'not found'
 Invoke-Case 'missing file' @{ 'docs/p.md' = $page } 1 'not found'
 Invoke-Case 'unmarked csharp block' @{ 'docs/p.md' = "# T`n`n``````csharp`nclass A {}`n```````n" } 1 'no sample'

@@ -40,8 +40,9 @@ Details worth knowing:
 
 ### Paths that are never handled
 
-Paths that belong to Umbraco and the platform are left alone: `/umbraco`, `/App_Plugins`, `/_framework` and
-`/.well-known`. They are never answered with your 404 page by the file handling, and never blocked.
+Paths that belong to Umbraco are left alone: `/umbraco`, `/App_Plugins` and `/_framework`. The file handling never
+answers them with your 404 page, and a block rule never applies to them. `/.well-known` is also left alone by the file
+handling, but it is not protected from block rules.
 
 ## What is tracked
 
