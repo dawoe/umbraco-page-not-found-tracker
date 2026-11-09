@@ -57,6 +57,8 @@ internal sealed class ConfigurationDocsTests
             Assert.That(settings.IncludeQueryString, Is.True);
             Assert.That(settings.ChannelCapacity, Is.EqualTo(20000));
             Assert.That(settings.DashboardUserGroups, Is.EqualTo(new[] { "admin", "editor", "writer" }));
+            Assert.That(settings.CleanupEnabled, Is.True);
+            Assert.That(settings.CleanupAfterDays, Is.EqualTo(180));
         });
     }
 

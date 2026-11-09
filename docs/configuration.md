@@ -34,6 +34,17 @@ Examples: `"FlushInterval": "00:00:05"`, `"IncludeQueryString": true`, `"Channel
 
 How tracking works is described in [How it works](how-it-works.md).
 
+## Clean-up
+
+| Setting | Type | Default | Effect |
+|---|---|---|---|
+| `CleanupEnabled` | boolean | `true` | When `false`, tracked URLs are never removed automatically. Independent of `TrackingEnabled`: with tracking off, old URLs are still removed. |
+| `CleanupAfterDays` | integer | `365` | A tracked URL is removed once its last hit is more than this many days ago. A value below 1 means the default. Lowering it on a large table makes the next daily run delete a large backlog, which delays Umbraco's other scheduled jobs (webhooks, scheduled publishing) on that server until it finishes: lower it in steps. |
+
+Examples: `"CleanupAfterDays": 90`, `"CleanupEnabled": false`.
+
+When and how the clean-up runs is described in [How it works](how-it-works.md#clean-up).
+
 ## The dashboards
 
 | Setting | Type | Default | Effect |
@@ -63,7 +74,9 @@ Example: `"DashboardUserGroups": ["admin", "editor", "writer"]`.
         "FlushInterval": "00:05:00",
         "IncludeQueryString": true,
         "ChannelCapacity": 20000,
-        "DashboardUserGroups": [ "admin", "editor", "writer" ]
+        "DashboardUserGroups": [ "admin", "editor", "writer" ],
+        "CleanupEnabled": true,
+        "CleanupAfterDays": 180
       }
     }
   }

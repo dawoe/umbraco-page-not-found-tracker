@@ -36,6 +36,9 @@ The list is sorted on **Hits**, highest first. Click a column heading to sort on
 The list does **not** refresh by itself, and new 404s appear after the next write to the database (every minute by
 default). Reload the page, or change a filter, to see the latest data.
 
+URLs that nobody requested for a year disappear from the list on their own. Your implementer can change that period
+or switch it off (see [Clean-up](how-it-works.md#clean-up)).
+
 What you may see instead of a list:
 
 | Message | Meaning |

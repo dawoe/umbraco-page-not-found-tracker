@@ -85,6 +85,33 @@ first, so a URL requested a thousand times in a minute is one update.
 - On shutdown the site writes what is left once more. Hits that cannot be written in the time the host allows are
   lost, and the count is logged.
 
+## Clean-up
+
+The tracked URLs table would otherwise only grow. Once a day the package removes every tracked URL whose last hit is
+more than `CleanupAfterDays` days ago (365 by default). It is on by default; `CleanupEnabled` switches it off (see
+[Configuration](configuration.md#clean-up)).
+
+- **Age is the only rule.** A URL that is still requested never ages out, because every hit moves its *Last seen*
+  forward. The number of hits does not protect a URL.
+- **The first run is about a day after the package is installed or upgraded**, not at startup, and restarting the
+  site does not move it. After that it runs once a day.
+- **It runs on one server at a time.** It is an Umbraco distributed background job: Umbraco's `umbracoDistributedJob`
+  table makes one server claim each run, also in a load-balanced setup. That server uses its own settings, so keep the
+  clean-up settings the same on all servers. During a rolling deployment where some servers do not have the package
+  yet, Umbraco can remove and re-add the job, which pushes the next run back by a day.
+- **It deletes in batches of 1000**, each a short statement, so tracking and the dashboard keep working while it runs.
+  A run continues until everything that is due is gone.
+- **A long first run after lowering the age.** Umbraco runs its scheduled jobs one after another on each server, so
+  while the clean-up runs, that server does not fire webhooks, run scheduled publishing or Umbraco's own clean-ups.
+  A normal daily run is short. Lowering `CleanupAfterDays` on a large table (for example from 365 to 7) makes the
+  next run delete a large backlog in one go; lower it in steps on a large table.
+- **A removed URL can come back.** When it is requested again it is tracked as a new row, starting from one hit.
+  Hits that were still waiting in memory to be written bring the row back the same way.
+- **It works with tracking switched off.** With `TrackingEnabled` set to `false`, old URLs are still removed.
+- **Blocked URLs are never removed.** The clean-up only touches tracked URLs, not block rules.
+- **The log says what it did.** A run that removed URLs logs `Removed <count> tracked 404 URLs last seen before
+  <date>.` at information level. A failure is logged as an error and retried at the next daily run.
+
 ## How redirects and blocks relate
 
 - **Create a redirect** for a tracked page URL: Umbraco gets a redirect and the tracked row is removed. Visitors

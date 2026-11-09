@@ -9,6 +9,8 @@ public sealed class PageNotFoundTrackerSettings
 {
     private const int DefaultChannelCapacity = 10000;
 
+    private const int DefaultCleanupAfterDays = 365;
+
     private static readonly TimeSpan DefaultFlushInterval = TimeSpan.FromMinutes(1);
 
     private static readonly TimeSpan MinimumFlushInterval = TimeSpan.FromSeconds(1);
@@ -50,6 +52,18 @@ public sealed class PageNotFoundTrackerSettings
     public IList<string> DashboardUserGroups { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets a value indicating whether tracked URLs that were not requested for <see cref="CleanupAfterDays"/>
+    /// days are removed automatically, once a day. True by default. Independent of <see cref="TrackingEnabled"/>.
+    /// </summary>
+    public bool CleanupEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets after how many days without a hit a tracked URL is removed by the clean-up (365 by default).
+    /// Consumers use <see cref="EffectiveCleanupAfterDays"/>.
+    /// </summary>
+    public int CleanupAfterDays { get; set; } = DefaultCleanupAfterDays;
+
+    /// <summary>
     /// Gets the flush interval to use: at least one second, and the default when the configured value is not positive.
     /// </summary>
     internal TimeSpan EffectiveFlushInterval
@@ -69,4 +83,9 @@ public sealed class PageNotFoundTrackerSettings
     /// Gets the channel capacity to use: the default when the configured value is below one.
     /// </summary>
     internal int EffectiveChannelCapacity => this.ChannelCapacity < 1 ? DefaultChannelCapacity : this.ChannelCapacity;
+
+    /// <summary>
+    /// Gets the clean-up age in days to use: the default when the configured value is below one.
+    /// </summary>
+    internal int EffectiveCleanupAfterDays => this.CleanupAfterDays < 1 ? DefaultCleanupAfterDays : this.CleanupAfterDays;
 }

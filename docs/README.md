@@ -20,7 +20,7 @@ It supports **Umbraco 17.x** on **.NET 10**, with SQLite or SQL Server as the Um
 
 - [Getting started](getting-started.md): requirements, installation, the 404 page, first run and a quick check.
 - [Configuration](configuration.md): every setting, its default and an example.
-- [How it works](how-it-works.md): how a 404 is detected, tracked, redirected or blocked.
+- [How it works](how-it-works.md): how a 404 is detected, tracked, cleaned up, redirected or blocked.
 - [Multi-site and languages](multi-site-and-language.md): how domains and cultures decide what happens, with four
   worked setups.
 - [Troubleshooting](troubleshooting.md): symptoms, causes and checks.

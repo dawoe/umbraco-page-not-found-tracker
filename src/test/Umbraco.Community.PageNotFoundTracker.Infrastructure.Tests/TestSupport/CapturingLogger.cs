@@ -5,7 +5,8 @@ using Microsoft.Extensions.Logging;
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests.TestSupport;
 
 /// <summary>
-/// A logger that keeps debug, warning and error messages, and the exceptions logged with warnings.
+/// A logger that keeps debug, information, warning and error messages, and the exceptions logged with warnings and
+/// errors.
 /// </summary>
 /// <typeparam name="T">The category type.</typeparam>
 internal sealed class CapturingLogger<T> : ILogger<T>
@@ -16,6 +17,16 @@ internal sealed class CapturingLogger<T> : ILogger<T>
     /// Gets the debug messages.
     /// </summary>
     public List<string> Debugs { get; } = [];
+
+    /// <summary>
+    /// Gets the information messages.
+    /// </summary>
+    public List<string> Informations { get; } = [];
+
+    /// <summary>
+    /// Gets the exceptions logged with the errors, in the same order (null when an error had none).
+    /// </summary>
+    public List<Exception?> ErrorExceptions { get; } = [];
 
     /// <summary>
     /// Gets the warning messages.
@@ -48,6 +59,10 @@ internal sealed class CapturingLogger<T> : ILogger<T>
             {
                 this.Debugs.Add(formatter(state, exception));
             }
+            else if (logLevel == LogLevel.Information)
+            {
+                this.Informations.Add(formatter(state, exception));
+            }
             else if (logLevel == LogLevel.Warning)
             {
                 this.Warnings.Add(formatter(state, exception));
@@ -56,6 +71,7 @@ internal sealed class CapturingLogger<T> : ILogger<T>
             else if (logLevel == LogLevel.Error)
             {
                 this.Errors.Add(formatter(state, exception));
+                this.ErrorExceptions.Add(exception);
             }
         }
     }

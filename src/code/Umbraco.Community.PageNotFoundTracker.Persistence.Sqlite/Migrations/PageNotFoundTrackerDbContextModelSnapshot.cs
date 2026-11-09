@@ -122,6 +122,8 @@ namespace Umbraco.Community.PageNotFoundTracker.Persistence.Sqlite.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("LastSeen");
+
                     b.HasIndex("RelativePath");
 
                     b.HasIndex("UrlHash", "Domain", "Culture")
