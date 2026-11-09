@@ -19,8 +19,8 @@ same URL on another site or in another language are different rows (see [How it 
 | Column | Meaning |
 |---|---|
 | URL | The address that was requested |
-| Domain | The site (Umbraco domain) the request was for. Empty when no domain matched |
-| Culture | The language of that domain. Empty when there is none |
+| Domain | The site (Umbraco domain) the request was for. Shown as *No domain* when no domain matched |
+| Culture | The language of that domain. Shown as *No culture* when there is none |
 | Type | **Page** or **File** |
 | Hits | How many times it was requested |
 | First seen, Last seen | When it was first and last requested |
