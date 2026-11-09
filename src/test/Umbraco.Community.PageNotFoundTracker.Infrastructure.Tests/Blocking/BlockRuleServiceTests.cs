@@ -360,7 +360,7 @@ internal sealed class BlockRuleServiceTests
     {
         await this.AddTrackedAsync("/old");
         using var cts = new CancellationTokenSource();
-        BlockRuleService cancelling = this.BuildServiceCancellingAfterWrite(cts, cancelAfterSave: true);
+        BlockRuleService cancelling = this.BuildServiceCancellingAfterWrite(new CancelAfterSaveInterceptor(cts));
 
         CreateBlockRuleOutcome outcome = await cancelling.CreateAsync("/old", 410, string.Empty, string.Empty, cts.Token);
 
@@ -385,7 +385,7 @@ internal sealed class BlockRuleServiceTests
         int id = (await this.RulesAsync()).Single().Id;
         this.calls.Clear();
         using var cts = new CancellationTokenSource();
-        BlockRuleService cancelling = this.BuildServiceCancellingAfterWrite(cts, cancelAfterSave: false);
+        BlockRuleService cancelling = this.BuildServiceCancellingAfterWrite(new CancelAfterRuleDeleteInterceptor(cts));
 
         bool deleted = await cancelling.DeleteAsync(id, cts.Token);
 
@@ -395,6 +395,253 @@ internal sealed class BlockRuleServiceTests
             Assert.That(deleted, Is.True);
             Assert.That(await this.RulesAsync(), Is.Empty);
             Assert.That(this.calls, Is.EqualTo(new[] { "refresh", "notify:Removed" }));
+        });
+    }
+
+    /// <summary>
+    /// An update changes every field in place, keeps the id and the creation date, and then refreshes, notifies and
+    /// deletes the records the changed rule covers, in that order.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_changes_every_field_keeps_id_and_created_then_refreshes_notifies_and_deletes_in_order()
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, string.Empty, CancellationToken.None);
+        BlockRule before = (await this.RulesAsync()).Single();
+        await this.AddTrackedAsync("/wp-admin/a", "www.a.local", "en-US");
+        await this.AddTrackedAsync("/other", "www.a.local", "en-US");
+        this.calls.Clear();
+
+        CreateBlockRuleOutcome outcome = await this.service.UpdateAsync(before.Id, " /WP-Admin/* ", 403, " WWW.A.local ", " en-us ", CancellationToken.None);
+
+        BlockRule rule = (await this.RulesAsync()).Single();
+        Assert.Multiple(async () =>
+        {
+            Assert.That(outcome, Is.EqualTo(new CreateBlockRuleOutcome(CreateBlockRuleStatus.Saved, null, true)));
+            Assert.That(rule.Id, Is.EqualTo(before.Id));
+            Assert.That(rule.Created, Is.EqualTo(before.Created));
+            Assert.That(rule.Pattern, Is.EqualTo("/wp-admin/*"));
+            Assert.That(rule.PatternHash, Is.EqualTo(TrackedUrlNormalizer.Hash("/wp-admin/*")));
+            Assert.That(rule.DisplayPattern, Is.EqualTo("/WP-Admin/*"));
+            Assert.That(rule.StatusCode, Is.EqualTo(403));
+            Assert.That(rule.Domain, Is.EqualTo("www.a.local"));
+            Assert.That(rule.Culture, Is.EqualTo("en-US"));
+            Assert.That(this.calls, Is.EqualTo(new[] { "refresh", "notify:Saved", "exclusive" }));
+            Assert.That((await this.TrackedAsync()).Select(r => r.RelativePath), Is.EqualTo(new[] { "/other" }));
+        });
+        this.notifier.Verify(
+            n => n.NotifyAsync(new BlockRuleCachePayload("/wp-admin/*", "www.a.local", "en-US", BlockRuleChange.Saved), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// Updating an unknown id gives <see cref="CreateBlockRuleStatus.NotFound"/> and does nothing.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_of_unknown_id_is_NotFound_and_does_nothing()
+    {
+        CreateBlockRuleOutcome outcome = await this.service.UpdateAsync(999, "/x", 410, string.Empty, string.Empty, CancellationToken.None);
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.NotFound));
+            Assert.That(outcome.RecordsRemoved, Is.False);
+            Assert.That(await this.RulesAsync(), Is.Empty);
+            Assert.That(this.calls, Is.Empty);
+        });
+    }
+
+    /// <summary>
+    /// An invalid pattern or status code gives <see cref="CreateBlockRuleStatus.Invalid"/> and changes nothing.
+    /// </summary>
+    /// <param name="pattern">The pattern.</param>
+    /// <param name="statusCode">The status code.</param>
+    /// <returns>A task.</returns>
+    [TestCase("/*", 410)]
+    [TestCase("/umbraco/x*", 410)]
+    [TestCase("/old", 302)]
+    public async Task Update_with_invalid_pattern_or_status_is_Invalid_and_changes_nothing(string pattern, int statusCode)
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, string.Empty, CancellationToken.None);
+        int id = (await this.RulesAsync()).Single().Id;
+
+        CreateBlockRuleOutcome outcome = await this.service.UpdateAsync(id, pattern, statusCode, string.Empty, string.Empty, CancellationToken.None);
+
+        BlockRule rule = (await this.RulesAsync()).Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Invalid));
+            Assert.That(outcome.Message, Is.Not.Null.And.Not.Empty);
+            Assert.That(rule.Pattern, Is.EqualTo("/old"));
+            Assert.That(rule.StatusCode, Is.EqualTo(410));
+            Assert.That(this.calls, Is.EqualTo(new[] { "refresh", "notify:Saved", "exclusive" }));
+        });
+    }
+
+    /// <summary>
+    /// An update into the identity of another rule gives <see cref="CreateBlockRuleStatus.Conflict"/> and changes nothing.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_into_another_rules_identity_is_Conflict_and_changes_nothing()
+    {
+        await this.service.CreateAsync("/a", 410, string.Empty, string.Empty, CancellationToken.None);
+        await this.service.CreateAsync("/b", 404, string.Empty, string.Empty, CancellationToken.None);
+        int idB = (await this.RulesAsync()).Single(r => r.Pattern == "/b").Id;
+        this.calls.Clear();
+
+        CreateBlockRuleOutcome outcome = await this.service.UpdateAsync(idB, " /A/ ", 403, string.Empty, string.Empty, CancellationToken.None);
+
+        List<BlockRule> rules = (await this.RulesAsync()).OrderBy(r => r.Pattern, StringComparer.Ordinal).ToList();
+        Assert.Multiple(() =>
+        {
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Conflict));
+            Assert.That(outcome.Message, Is.EqualTo(BlockingConstants.RuleExistsMessage));
+            Assert.That(rules.Select(r => r.Pattern), Is.EqualTo(new[] { "/a", "/b" }));
+            Assert.That(rules.Select(r => r.StatusCode), Is.EqualTo(new[] { 410, 404 }));
+            Assert.That(this.calls, Is.Empty);
+        });
+    }
+
+    /// <summary>
+    /// Changing only the status or the spelling of a rule is not a conflict with itself.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_of_only_the_status_or_spelling_of_the_same_rule_is_Saved()
+    {
+        await this.service.CreateAsync("/wp-admin/*", 410, string.Empty, string.Empty, CancellationToken.None);
+        BlockRule before = (await this.RulesAsync()).Single();
+
+        CreateBlockRuleOutcome outcome = await this.service.UpdateAsync(before.Id, "/WP-Admin/*/", 403, string.Empty, string.Empty, CancellationToken.None);
+
+        List<BlockRule> rules = await this.RulesAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Saved));
+            Assert.That(rules, Has.Count.EqualTo(1));
+            Assert.That(rules[0].Pattern, Is.EqualTo("/wp-admin/*"));
+            Assert.That(rules[0].DisplayPattern, Is.EqualTo("/WP-Admin/*/"));
+            Assert.That(rules[0].StatusCode, Is.EqualTo(403));
+            Assert.That(rules[0].PatternHash, Is.EqualTo(before.PatternHash));
+        });
+    }
+
+    /// <summary>
+    /// An update canonicalises the culture like a create.
+    /// </summary>
+    /// <param name="given">The culture as passed.</param>
+    /// <param name="stored">The culture as stored.</param>
+    /// <returns>A task.</returns>
+    [TestCase("en-us", "en-US")]
+    [TestCase("Not-A-Culture-X", "not-a-culture-x")]
+    public async Task Update_canonicalises_the_culture(string given, string stored)
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, string.Empty, CancellationToken.None);
+        int id = (await this.RulesAsync()).Single().Id;
+
+        await this.service.UpdateAsync(id, "/old", 410, string.Empty, given, CancellationToken.None);
+
+        Assert.That((await this.RulesAsync()).Single().Culture, Is.EqualTo(stored));
+    }
+
+    /// <summary>
+    /// A failing record delete keeps the change and gives <c>RecordsRemoved=false</c>.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_delete_failure_keeps_the_change_and_returns_RecordsRemoved_false()
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, string.Empty, CancellationToken.None);
+        int id = (await this.RulesAsync()).Single().Id;
+        await using (var context = new PageNotFoundTrackerDbContext(this.options))
+        {
+            await context.Database.ExecuteSqlRawAsync($"DROP TABLE {TrackingConstants.TableName}");
+        }
+
+        CreateBlockRuleOutcome outcome = await this.service.UpdateAsync(id, "/new", 410, string.Empty, string.Empty, CancellationToken.None);
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Saved));
+            Assert.That(outcome.RecordsRemoved, Is.False);
+            Assert.That(outcome.Message, Is.EqualTo(BlockingConstants.RecordsNotRemovedMessage));
+            Assert.That((await this.RulesAsync()).Single().Pattern, Is.EqualTo("/new"));
+        });
+    }
+
+    /// <summary>
+    /// Queued hits that match the changed rule within its scope are discarded; others stay.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_discards_matching_queued_hits_in_scope_only()
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, string.Empty, CancellationToken.None);
+        int id = (await this.RulesAsync()).Single().Id;
+        this.queue.TryEnqueue(QueuedHit("/new/a", string.Empty, string.Empty));
+        this.queue.TryEnqueue(QueuedHit("/new/a", "www.b.local", string.Empty));
+        this.queue.TryEnqueue(QueuedHit("/other", string.Empty, string.Empty));
+
+        await this.service.UpdateAsync(id, "/new/*", 410, "www.b.local", string.Empty, CancellationToken.None);
+
+        List<TrackedUrlHit> left = [.. this.queue.TakeBatch()];
+        Assert.That(left.Select(h => (h.RelativePath, h.Domain)), Is.EquivalentTo(new[] { ("/new/a", string.Empty), ("/other", string.Empty) }));
+    }
+
+    /// <summary>
+    /// A request that is cancelled after the rule update is committed still refreshes, notifies and removes the covered
+    /// records.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_cancelled_after_the_write_still_refreshes_notifies_and_removes_records()
+    {
+        await this.service.CreateAsync("/old", 410, string.Empty, string.Empty, CancellationToken.None);
+        int id = (await this.RulesAsync()).Single().Id;
+        await this.AddTrackedAsync("/new");
+        await this.AddTrackedAsync("/other");
+        using var cts = new CancellationTokenSource();
+        BlockRuleService cancelling = this.BuildServiceCancellingAfterWrite(new CancelAfterRuleUpdateInterceptor(cts));
+
+        CreateBlockRuleOutcome outcome = await cancelling.UpdateAsync(id, "/new", 410, string.Empty, string.Empty, cts.Token);
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(cts.IsCancellationRequested, Is.True, "The test must have cancelled the request after the update.");
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Saved));
+            Assert.That(this.calls.TakeLast(3), Is.EqualTo(new[] { "refresh", "notify:Saved", "exclusive" }));
+            Assert.That((await this.TrackedAsync()).Select(r => r.RelativePath), Is.EqualTo(new[] { "/other" }));
+        });
+    }
+
+    /// <summary>
+    /// When another server takes the new identity between the collision check and the write, the unique index rejects
+    /// the write and the update gives <see cref="CreateBlockRuleStatus.Conflict"/>.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_unique_violation_on_the_write_is_Conflict()
+    {
+        await this.service.CreateAsync("/a", 410, string.Empty, string.Empty, CancellationToken.None);
+        await this.service.CreateAsync("/b", 404, string.Empty, string.Empty, CancellationToken.None);
+        int idB = (await this.RulesAsync()).Single(r => r.Pattern == "/b").Id;
+        this.calls.Clear();
+        BlockRuleService racing = this.BuildServiceWithInterceptor(new InsertBeforeRuleUpdateInterceptor("/c"));
+
+        CreateBlockRuleOutcome outcome = await racing.UpdateAsync(idB, "/c", 403, string.Empty, string.Empty, CancellationToken.None);
+
+        List<BlockRule> rules = await this.RulesAsync();
+        BlockRule ruleB = rules.Single(r => r.Id == idB);
+        Assert.Multiple(() =>
+        {
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Conflict));
+            Assert.That(outcome.Message, Is.EqualTo(BlockingConstants.RuleExistsMessage));
+            Assert.That(ruleB.Pattern, Is.EqualTo("/b"));
+            Assert.That(ruleB.StatusCode, Is.EqualTo(404));
+            Assert.That(rules, Has.Count.EqualTo(3));
+            Assert.That(this.calls, Is.Empty);
         });
     }
 
@@ -425,9 +672,10 @@ internal sealed class BlockRuleServiceTests
 
     /// <summary>
     /// Builds a service whose collaborators throw when given a cancelled token (like the real ones) and whose database
-    /// cancels <paramref name="cts"/> right after the rule write (insert, or delete of a rule) committed.
+    /// runs <paramref name="interceptor"/>, which cancels the request right after the rule write (insert, update or
+    /// delete of a rule) committed.
     /// </summary>
-    private BlockRuleService BuildServiceCancellingAfterWrite(CancellationTokenSource cts, bool cancelAfterSave)
+    private BlockRuleService BuildServiceCancellingAfterWrite(IInterceptor interceptor)
     {
         this.snapshotProvider.Setup(p => p.RefreshAsync(It.IsAny<CancellationToken>()))
             .Returns((CancellationToken t) =>
@@ -451,12 +699,20 @@ internal sealed class BlockRuleServiceTests
                 return action();
             });
 
-        DbContextOptions<PageNotFoundTrackerDbContext> cancelling = new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>()
+        return this.BuildServiceWithInterceptor(interceptor);
+    }
+
+    /// <summary>
+    /// Builds a service on the fixture's collaborators whose database runs <paramref name="interceptor"/>.
+    /// </summary>
+    private BlockRuleService BuildServiceWithInterceptor(IInterceptor interceptor)
+    {
+        DbContextOptions<PageNotFoundTrackerDbContext> intercepted = new DbContextOptionsBuilder<PageNotFoundTrackerDbContext>()
             .UseSqlite(this.connection)
-            .AddInterceptors(cancelAfterSave ? new CancelAfterSaveInterceptor(cts) : new CancelAfterRuleDeleteInterceptor(cts))
+            .AddInterceptors(interceptor)
             .Options;
         IServiceProvider serviceProvider = new ServiceCollection()
-            .AddSingleton<IDbContextFactory<PageNotFoundTrackerDbContext>>(new TestContextFactory(cancelling))
+            .AddSingleton<IDbContextFactory<PageNotFoundTrackerDbContext>>(new TestContextFactory(intercepted))
             .BuildServiceProvider();
         return new BlockRuleService(
             serviceProvider,
@@ -473,6 +729,9 @@ internal sealed class BlockRuleServiceTests
     private static IDomain Domain(string name) => Mock.Of<IDomain>(d => d.DomainName == name);
 
     private static ILanguage Language(string isoCode) => Mock.Of<ILanguage>(l => l.IsoCode == isoCode);
+
+    private static bool IsRuleUpdate(DbCommand command) =>
+        command.CommandText.Contains("UPDATE", StringComparison.Ordinal) && command.CommandText.Contains(BlockingConstants.TableName, StringComparison.Ordinal);
 
     private static TrackedUrlHit QueuedHit(string relativePath, string domain, string culture) =>
         new(relativePath, "hash" + relativePath + domain + culture, relativePath, relativePath, domain, culture, false, 1, T0, T0);
@@ -531,6 +790,55 @@ internal sealed class BlockRuleServiceTests
             }
 
             return base.NonQueryExecutedAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class CancelAfterRuleUpdateInterceptor(CancellationTokenSource cts) : DbCommandInterceptor
+    {
+        public override ValueTask<int> NonQueryExecutedAsync(DbCommand command, CommandExecutedEventData eventData, int result, CancellationToken cancellationToken = default)
+        {
+            if (IsRuleUpdate(command))
+            {
+                cts.Cancel();
+            }
+
+            return base.NonQueryExecutedAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Inserts a rule with <paramref name="pattern"/> (all domains, all cultures) right before the first rule update
+    /// runs, like another server would between the collision check and the write.
+    /// </summary>
+    private sealed class InsertBeforeRuleUpdateInterceptor(string pattern) : DbCommandInterceptor
+    {
+        private bool fired;
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (!this.fired && IsRuleUpdate(command))
+            {
+                this.fired = true;
+                await using DbCommand insert = command.Connection!.CreateCommand();
+                insert.Transaction = command.Transaction;
+                insert.CommandText =
+                    $"INSERT INTO {BlockingConstants.TableName} (Pattern, PatternHash, DisplayPattern, StatusCode, Domain, Culture, Created) " +
+                    "VALUES ($pattern, $hash, $pattern, 410, '', '', $created)";
+                AddParameter(insert, "$pattern", pattern);
+                AddParameter(insert, "$hash", TrackedUrlNormalizer.Hash(pattern));
+                AddParameter(insert, "$created", T0);
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return await base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        private static void AddParameter(DbCommand command, string name, object value)
+        {
+            DbParameter parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = value;
+            command.Parameters.Add(parameter);
         }
     }
 }

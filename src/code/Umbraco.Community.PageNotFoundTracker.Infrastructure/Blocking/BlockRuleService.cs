@@ -1,5 +1,6 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using System.Data.Common;
 using System.Globalization;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
@@ -15,8 +16,9 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Blocking;
 
 /// <summary>
 /// The default <see cref="IBlockRuleService"/>. Creating a rule validates it, upserts it by its identity (pattern hash,
-/// domain, culture), rebuilds this server's snapshot, tells the other servers, and then, holding the flush lock, discards
-/// the matching queued hits and deletes the matching tracked records with one <c>LIKE</c> delete on
+/// domain, culture); updating one validates it and changes the row in place unless another rule has the new identity.
+/// Both then rebuild this server's snapshot, tell the other servers, and then, holding the flush lock, discard the
+/// matching queued hits and delete the matching tracked records with one <c>LIKE</c> delete on
 /// <see cref="TrackedUrl.RelativePath"/>.
 /// </summary>
 /// <remarks>
@@ -105,41 +107,92 @@ internal sealed class BlockRuleService : IBlockRuleService
         string culture,
         CancellationToken cancellationToken)
     {
-        string display = (pattern ?? string.Empty).Trim();
-        string normalised = BlockPatternNormalizer.Normalize(display);
-        string scopeDomain = (domain ?? string.Empty).Trim().ToLowerInvariant();
-        string scopeCulture = await this.CanonicaliseCultureAsync((culture ?? string.Empty).Trim());
-
-        string? message = BlockPatternValidator.Validate(normalised, statusCode)
-            ?? ValidateScope(scopeDomain, scopeCulture);
-        if (message is not null)
+        PreparedRule prepared = await this.PrepareAsync(pattern, statusCode, domain, culture);
+        if (prepared.Message is not null)
         {
-            return new CreateBlockRuleOutcome(CreateBlockRuleStatus.Invalid, message, false);
+            return new CreateBlockRuleOutcome(CreateBlockRuleStatus.Invalid, prepared.Message, false);
         }
 
         var rule = new BlockRule
         {
-            Pattern = normalised,
-            PatternHash = TrackedUrlNormalizer.Hash(normalised),
-            DisplayPattern = display.Length <= BlockingConstants.MaxPatternLength ? display : display[..BlockingConstants.MaxPatternLength],
+            Pattern = prepared.Pattern,
+            PatternHash = prepared.PatternHash,
+            DisplayPattern = prepared.DisplayPattern,
             StatusCode = statusCode,
-            Domain = scopeDomain,
-            Culture = scopeCulture,
+            Domain = prepared.Domain,
+            Culture = prepared.Culture,
             Created = this.timeProvider.GetUtcNow().UtcDateTime,
         };
 
         await this.UpsertAsync(rule, cancellationToken);
+        return await this.CompleteSaveAsync(prepared.Pattern, prepared.Domain, prepared.Culture);
+    }
 
-        // The rule is committed from here on: refresh, notify and the record removal ignore the request token, or a client
-        // abort would leave the stored rule and the enforced rules out of step on every server.
-        await this.snapshotProvider.RefreshAsync(CancellationToken.None);
-        await this.NotifyAsync(new BlockRuleCachePayload(normalised, scopeDomain, scopeCulture, BlockRuleChange.Saved));
+    /// <inheritdoc />
+    public async Task<CreateBlockRuleOutcome> UpdateAsync(
+        int id,
+        string pattern,
+        int statusCode,
+        string domain,
+        string culture,
+        CancellationToken cancellationToken)
+    {
+        PreparedRule prepared = await this.PrepareAsync(pattern, statusCode, domain, culture);
+        if (prepared.Message is not null)
+        {
+            return new CreateBlockRuleOutcome(CreateBlockRuleStatus.Invalid, prepared.Message, false);
+        }
 
-        bool recordsRemoved = await this.RemoveMatchingRecordsAsync(normalised, scopeDomain, scopeCulture);
-        return new CreateBlockRuleOutcome(
-            CreateBlockRuleStatus.Saved,
-            recordsRemoved ? null : BlockingConstants.RecordsNotRemovedMessage,
-            recordsRemoved);
+        await using (PageNotFoundTrackerDbContext dbContext = await this.CreateContextAsync(cancellationToken))
+        {
+            if (await dbContext.BlockRules.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, cancellationToken) is null)
+            {
+                return NotFound();
+            }
+
+            if (await CollidesAsync(dbContext.BlockRules, id, prepared, cancellationToken))
+            {
+                return Conflict();
+            }
+
+            int updated;
+            try
+            {
+                updated = await dbContext.BlockRules
+                    .Where(r => r.Id == id)
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(r => r.Pattern, prepared.Pattern)
+                            .SetProperty(r => r.PatternHash, prepared.PatternHash)
+                            .SetProperty(r => r.DisplayPattern, prepared.DisplayPattern)
+                            .SetProperty(r => r.StatusCode, statusCode)
+                            .SetProperty(r => r.Domain, prepared.Domain)
+                            .SetProperty(r => r.Culture, prepared.Culture),
+                        cancellationToken);
+            }
+            catch (DbException)
+            {
+                // ExecuteUpdate bypasses the change tracker, so a unique index violation is the provider's exception. When
+                // another server took the new identity between the check and the write, that is a conflict.
+                if (!await CollidesAsync(dbContext.BlockRules, id, prepared, cancellationToken))
+                {
+                    throw;
+                }
+
+                return Conflict();
+            }
+
+            if (updated == 0)
+            {
+                return NotFound();
+            }
+        }
+
+        return await this.CompleteSaveAsync(prepared.Pattern, prepared.Domain, prepared.Culture);
+
+        static CreateBlockRuleOutcome NotFound() => new(CreateBlockRuleStatus.NotFound, null, false);
+
+        static CreateBlockRuleOutcome Conflict() => new(CreateBlockRuleStatus.Conflict, BlockingConstants.RuleExistsMessage, false);
     }
 
     /// <inheritdoc />
@@ -285,6 +338,66 @@ internal sealed class BlockRuleService : IBlockRuleService
             .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.StatusCode, statusCode), cancellationToken);
     }
 
+    /// <summary>
+    /// Whether a rule other than <paramref name="id"/> has the prepared pattern, domain and culture.
+    /// </summary>
+    private static Task<bool> CollidesAsync(DbSet<BlockRule> set, int id, PreparedRule prepared, CancellationToken cancellationToken)
+    {
+        string hash = prepared.PatternHash;
+        string domain = prepared.Domain;
+        string culture = prepared.Culture;
+        return set.AnyAsync(r => r.Id != id && r.PatternHash == hash && r.Domain == domain && r.Culture == culture, cancellationToken);
+    }
+
+    /// <summary>
+    /// Normalises the pattern, trims and lower-cases the domain, canonicalises the culture and validates the result, the
+    /// same way for a create and an update.
+    /// </summary>
+    /// <param name="pattern">The pattern as entered.</param>
+    /// <param name="statusCode">The status code.</param>
+    /// <param name="domain">The domain as entered.</param>
+    /// <param name="culture">The culture as entered.</param>
+    /// <returns>The prepared values, with the validation message when they are not valid.</returns>
+    private async Task<PreparedRule> PrepareAsync(string pattern, int statusCode, string domain, string culture)
+    {
+        string display = (pattern ?? string.Empty).Trim();
+        string normalised = BlockPatternNormalizer.Normalize(display);
+        string scopeDomain = (domain ?? string.Empty).Trim().ToLowerInvariant();
+        string scopeCulture = await this.CanonicaliseCultureAsync((culture ?? string.Empty).Trim());
+
+        string? message = BlockPatternValidator.Validate(normalised, statusCode)
+            ?? ValidateScope(scopeDomain, scopeCulture);
+        return new PreparedRule(
+            normalised,
+            TrackedUrlNormalizer.Hash(normalised),
+            display.Length <= BlockingConstants.MaxPatternLength ? display : display[..BlockingConstants.MaxPatternLength],
+            scopeDomain,
+            scopeCulture,
+            message);
+    }
+
+    /// <summary>
+    /// The steps after a rule was written: refresh this server's snapshot, tell the other servers and remove the tracked
+    /// records and queued hits the rule covers.
+    /// </summary>
+    /// <param name="pattern">The normalised pattern.</param>
+    /// <param name="domain">The rule's domain.</param>
+    /// <param name="culture">The rule's culture.</param>
+    /// <returns>The <see cref="CreateBlockRuleStatus.Saved"/> outcome.</returns>
+    private async Task<CreateBlockRuleOutcome> CompleteSaveAsync(string pattern, string domain, string culture)
+    {
+        // The rule is committed from here on: refresh, notify and the record removal ignore the request token, or a client
+        // abort would leave the stored rule and the enforced rules out of step on every server.
+        await this.snapshotProvider.RefreshAsync(CancellationToken.None);
+        await this.NotifyAsync(new BlockRuleCachePayload(pattern, domain, culture, BlockRuleChange.Saved));
+
+        bool recordsRemoved = await this.RemoveMatchingRecordsAsync(pattern, domain, culture);
+        return new CreateBlockRuleOutcome(
+            CreateBlockRuleStatus.Saved,
+            recordsRemoved ? null : BlockingConstants.RecordsNotRemovedMessage,
+            recordsRemoved);
+    }
+
     private async Task UpsertAsync(BlockRule rule, CancellationToken cancellationToken)
     {
         await using PageNotFoundTrackerDbContext dbContext = await this.CreateContextAsync(cancellationToken);
@@ -385,4 +498,15 @@ internal sealed class BlockRuleService : IBlockRuleService
 
     private async Task<PageNotFoundTrackerDbContext> CreateContextAsync(CancellationToken cancellationToken) =>
         await this.serviceProvider.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>().CreateDbContextAsync(cancellationToken);
+
+    /// <summary>
+    /// A rule's input after normalisation and canonicalisation.
+    /// </summary>
+    /// <param name="Pattern">The normalised pattern.</param>
+    /// <param name="PatternHash">The hash of the normalised pattern.</param>
+    /// <param name="DisplayPattern">The trimmed pattern as entered, cut to the column length.</param>
+    /// <param name="Domain">The domain, trimmed and lower-cased; empty for all.</param>
+    /// <param name="Culture">The canonical culture; empty for all.</param>
+    /// <param name="Message">Why the input is not valid, or null.</param>
+    private sealed record PreparedRule(string Pattern, string PatternHash, string DisplayPattern, string Domain, string Culture, string? Message);
 }
