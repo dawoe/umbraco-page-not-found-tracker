@@ -1,6 +1,3 @@
-import { PNFT_BLOCK_RULE_ENTITY_TYPE } from '../src/blocking/constants.js';
-import { PNFT_TRACKED_URL_ENTITY_TYPE } from '../src/entity.js';
-
 // docs:begin row-action-manifest
 export const manifests: Array<UmbExtensionManifest> = [
   {
@@ -9,8 +6,8 @@ export const manifests: Array<UmbExtensionManifest> = [
     alias: 'My.EntityAction.Report',
     name: 'My report action',
     weight: -20, // below the package's own actions
-    // Tracked URL rows and block rule rows of the two dashboards.
-    forEntityTypes: [PNFT_TRACKED_URL_ENTITY_TYPE, PNFT_BLOCK_RULE_ENTITY_TYPE],
+    // The rows of the two dashboards: tracked URLs and block rules.
+    forEntityTypes: ['page-not-found-tracker-url', 'page-not-found-tracker-block-rule'],
     api: () => import('./row-action.js'),
     meta: {
       icon: 'icon-info',
