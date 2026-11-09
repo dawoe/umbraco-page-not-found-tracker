@@ -99,8 +99,9 @@ dashboard).
      `Unavailable` (no provider, failed migration), return without logging: the migration service already logged why.
   3. Compute the cut-off once: `TimeProvider` UTC now minus `EffectiveCleanupAfterDays` days. A row is removed when
      `LastSeen < cutoff` (strictly older; a row exactly at the cut-off stays).
-  4. Delete in batches (an internal constant, about 1000 rows per statement) until a batch removes fewer rows than the
-     batch size. Each batch is its own statement and its own short transaction, so locks stay short and a flush or
+  4. Delete in batches (an internal constant, about 1000 rows per statement) until a batch *selects* fewer due rows than
+     the batch size (amended after the final review: stopping on fewer *deleted* rows ended the run early when a row of a
+     full batch was seen again or removed between its select and its delete). Each batch is its own statement and its own short transaction, so locks stay short and a flush or
      dashboard query can run between batches. A fresh `PageNotFoundTrackerDbContext` per run, from
      `IDbContextFactory<PageNotFoundTrackerDbContext>` resolved at run time (as `TrackingFlushService` and
      `TrackedUrlQueryService` do: the pooled factory must not be resolved before the gate opened).

@@ -15,10 +15,10 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Retention;
 internal sealed class TrackedUrlCleaner(IServiceProvider serviceProvider) : ITrackedUrlCleaner
 {
     /// <inheritdoc />
-    public async Task<int> DeleteBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken)
+    public async Task<CleanupBatch> DeleteBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken)
     {
         IReadOnlyList<int> ids = await this.SelectBatchAsync(cutoff, batchSize, cancellationToken);
-        return await this.DeleteAsync(ids, cutoff, cancellationToken);
+        return new CleanupBatch(ids.Count, await this.DeleteAsync(ids, cutoff, cancellationToken));
     }
 
     /// <summary>

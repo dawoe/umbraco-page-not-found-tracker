@@ -13,6 +13,6 @@ internal interface ITrackedUrlCleaner
     /// <param name="cutoff">The UTC cut-off; rows last seen strictly before it are deleted.</param>
     /// <param name="batchSize">The maximum number of rows to delete.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The number of rows deleted.</returns>
-    Task<int> DeleteBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken);
+    /// <returns>How many rows were selected as due and how many of them were deleted.</returns>
+    Task<CleanupBatch> DeleteBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken);
 }

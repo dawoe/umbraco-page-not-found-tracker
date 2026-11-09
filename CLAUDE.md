@@ -1122,12 +1122,13 @@ Public owner of the behaviour: `docs/how-it-works.md#clean-up`; of the settings:
   `AddSingleton<IDistributedBackgroundJob, TrackedUrlCleanupJob>()` always, also when `CleanupEnabled` is false (it then logs
   at debug and returns), so the setting never adds or removes Umbraco's row. Run: `CleanupEnabled` check, then
   `ITrackingPersistenceState.WaitUntilReadyAsync` (`Unavailable` returns silently, `Pending` waits), cut-off = UTC now minus
-  `EffectiveCleanupAfterDays` days (`DateTime.MinValue` when the age exceeds the calendar), batches until one is not full,
+  `EffectiveCleanupAfterDays` days (`DateTime.MinValue` when the age exceeds the calendar), batches until one *selects* fewer than 1000 due rows (not *deletes*: a row seen again in between must not end the run),
   then one log line (information when rows were removed, else debug). Shutdown stops between batches and logs the partial
-  count; any other exception is logged as an error with the partial count and never thrown into Umbraco's scheduler.
+  count; **any** exception once the token is cancelled counts as shutdown (SqlClient reports a cancelled command as a
+  `SqlException`, not an `OperationCanceledException`); any other exception is logged as an error with the partial count and never thrown into Umbraco's scheduler.
   It does not take the flush lock and does not touch `TrackingQueue`.
-- `ITrackedUrlCleaner` / `TrackedUrlCleaner` (internal seam, `AddUnique`): `DeleteBatchAsync(cutoff, batchSize, ct)` =
-  `SelectBatchAsync` (ids with `LastSeen < cutoff`, by `Id`, `Take`) then `DeleteAsync(ids, cutoff)` (`ExecuteDelete` where id
+- `ITrackedUrlCleaner` / `TrackedUrlCleaner` (internal seam, `AddUnique`): `DeleteBatchAsync(cutoff, batchSize, ct)` returns
+  `CleanupBatch(Selected, Deleted)` = `SelectBatchAsync` (ids with `LastSeen < cutoff`, by `Id`, `Take`) then `DeleteAsync(ids, cutoff)` (`ExecuteDelete` where id
   in the list **and still** `LastSeen < cutoff`, so a row a flush updated in between survives). Keep the batch at most 1000
   (SQL Server's 2100 parameter limit). The context factory is resolved per call.
 - Index `IX_pageNotFoundTrackerUrl_LastSeen` (migration `AddLastSeenIndex` in both provider projects).

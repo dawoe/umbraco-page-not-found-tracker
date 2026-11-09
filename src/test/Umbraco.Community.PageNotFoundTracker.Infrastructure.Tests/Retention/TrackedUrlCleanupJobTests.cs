@@ -127,9 +127,9 @@ internal sealed class TrackedUrlCleanupJobTests
     [Test]
     public async Task Loops_until_a_batch_is_not_full_and_logs_total()
     {
-        this.cleaner.Results.Enqueue(_ => 1000);
-        this.cleaner.Results.Enqueue(_ => 1000);
-        this.cleaner.Results.Enqueue(_ => 3);
+        this.cleaner.Results.Enqueue(_ => new CleanupBatch(1000, 1000));
+        this.cleaner.Results.Enqueue(_ => new CleanupBatch(1000, 1000));
+        this.cleaner.Results.Enqueue(_ => new CleanupBatch(3, 3));
 
         await this.CreateJob(new PageNotFoundTrackerSettings()).ExecuteAsync(CancellationToken.None);
 
@@ -138,6 +138,26 @@ internal sealed class TrackedUrlCleanupJobTests
             Assert.That(this.cleaner.Cutoffs, Has.Count.EqualTo(3));
             Assert.That(this.logger.Informations, Has.Count.EqualTo(1));
             Assert.That(this.logger.Informations[0], Does.Contain("2003"));
+        });
+    }
+
+    /// <summary>
+    /// A full batch that loses a row between its select and its delete (a flush moved its last seen, or a redirect or
+    /// block removed it) does not end the run: due rows behind it are still removed in the same run.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Full_selection_with_fewer_deletes_continues_the_run()
+    {
+        this.cleaner.Results.Enqueue(_ => new CleanupBatch(1000, 999));
+        this.cleaner.Results.Enqueue(_ => new CleanupBatch(3, 3));
+
+        await this.CreateJob(new PageNotFoundTrackerSettings()).ExecuteAsync(CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(this.cleaner.Cutoffs, Has.Count.EqualTo(2));
+            Assert.That(this.logger.Informations[0], Does.Contain("1002"));
         });
     }
 
@@ -182,16 +202,16 @@ internal sealed class TrackedUrlCleanupJobTests
     public async Task Cancellation_stops_between_batches_and_logs_partial_count()
     {
         using var shutdown = new CancellationTokenSource();
-        this.cleaner.Results.Enqueue(_ => 1000);
+        this.cleaner.Results.Enqueue(_ => new CleanupBatch(1000, 1000));
         this.cleaner.Results.Enqueue(_ =>
         {
             shutdown.Cancel();
-            return 1000;
+            return new CleanupBatch(1000, 1000);
         });
         this.cleaner.Results.Enqueue(ct =>
         {
             ct.ThrowIfCancellationRequested();
-            return 1000;
+            return new CleanupBatch(1000, 1000);
         });
         TrackedUrlCleanupJob job = this.CreateJob(new PageNotFoundTrackerSettings());
 
@@ -206,6 +226,34 @@ internal sealed class TrackedUrlCleanupJobTests
     }
 
     /// <summary>
+    /// A provider that reports a shutdown mid-statement as its own exception (SqlClient throws a <c>SqlException</c>
+    /// "Operation cancelled by user", not an <see cref="OperationCanceledException"/>) still counts as a shutdown, not as a
+    /// failure.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Provider_exception_after_shutdown_is_logged_as_shutdown_not_error()
+    {
+        using var shutdown = new CancellationTokenSource();
+        this.cleaner.Results.Enqueue(_ => new CleanupBatch(1000, 1000));
+        this.cleaner.Results.Enqueue(_ =>
+        {
+            shutdown.Cancel();
+            throw new InvalidOperationException("Operation cancelled by user.");
+        });
+        TrackedUrlCleanupJob job = this.CreateJob(new PageNotFoundTrackerSettings());
+
+        Assert.DoesNotThrowAsync(() => job.ExecuteAsync(shutdown.Token));
+        Assert.Multiple(() =>
+        {
+            Assert.That(this.logger.Errors, Is.Empty);
+            Assert.That(this.logger.Informations, Has.Count.EqualTo(1));
+            Assert.That(this.logger.Informations[0], Does.Contain("1000"));
+        });
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
     /// A failing batch is logged as an error with the count removed so far and never thrown into Umbraco's scheduler.
     /// </summary>
     /// <returns>A task.</returns>
@@ -213,7 +261,7 @@ internal sealed class TrackedUrlCleanupJobTests
     public async Task Cleaner_failure_is_logged_and_swallowed()
     {
         var failure = new InvalidOperationException("database down");
-        this.cleaner.Results.Enqueue(_ => 1000);
+        this.cleaner.Results.Enqueue(_ => new CleanupBatch(1000, 1000));
         this.cleaner.Results.Enqueue(_ => throw failure);
         TrackedUrlCleanupJob job = this.CreateJob(new PageNotFoundTrackerSettings());
 
@@ -232,17 +280,17 @@ internal sealed class TrackedUrlCleanupJobTests
 
     private sealed class FakeCleaner : ITrackedUrlCleaner
     {
-        public Queue<Func<CancellationToken, int>> Results { get; } = new();
+        public Queue<Func<CancellationToken, CleanupBatch>> Results { get; } = new();
 
         public List<DateTime> Cutoffs { get; } = [];
 
         public List<int> BatchSizes { get; } = [];
 
-        public Task<int> DeleteBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken)
+        public Task<CleanupBatch> DeleteBatchAsync(DateTime cutoff, int batchSize, CancellationToken cancellationToken)
         {
             this.Cutoffs.Add(cutoff);
             this.BatchSizes.Add(batchSize);
-            int result = this.Results.Count > 0 ? this.Results.Dequeue()(cancellationToken) : 0;
+            CleanupBatch result = this.Results.Count > 0 ? this.Results.Dequeue()(cancellationToken) : new CleanupBatch(0, 0);
             return Task.FromResult(result);
         }
     }

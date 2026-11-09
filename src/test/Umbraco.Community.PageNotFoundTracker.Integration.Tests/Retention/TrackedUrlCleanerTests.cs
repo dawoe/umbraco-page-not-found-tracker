@@ -60,7 +60,7 @@ internal sealed class TrackedUrlCleanerTests : TrackingDatabaseFixture
             Row("/newer", Cutoff.AddDays(1)),
             Row("/future", Cutoff.AddYears(5)));
 
-        int deleted = await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None);
+        int deleted = (await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None)).Deleted;
 
         List<string> left = await this.UrlsAsync();
         Assert.Multiple(() =>
@@ -81,10 +81,10 @@ internal sealed class TrackedUrlCleanerTests : TrackingDatabaseFixture
 
         int[] batches =
         [
-            await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None),
-            await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None),
-            await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None),
-            await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None),
+            (await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None)).Deleted,
+            (await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None)).Deleted,
+            (await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None)).Deleted,
+            (await this.cleaner.DeleteBatchAsync(Cutoff, 1000, CancellationToken.None)).Deleted,
         ];
 
         List<string> left = await this.UrlsAsync();

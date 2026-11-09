@@ -79,7 +79,7 @@ internal sealed class TrackedUrlCleanupJob : IDistributedBackgroundJob
                 return;
             }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
             return;
         }
@@ -88,14 +88,16 @@ internal sealed class TrackedUrlCleanupJob : IDistributedBackgroundJob
         int removed = 0;
         try
         {
-            int deleted;
+            // Continue while a batch selected a full set of due rows, even when fewer were deleted (a row seen again or
+            // removed in between): rows behind it may still be due. Cannot loop forever, a row seen again is no longer due.
+            CleanupBatch batch;
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                deleted = await this.cleaner.DeleteBatchAsync(cutoff, BatchSize, cancellationToken);
-                removed += deleted;
+                batch = await this.cleaner.DeleteBatchAsync(cutoff, BatchSize, cancellationToken);
+                removed += batch.Deleted;
             }
-            while (deleted >= BatchSize);
+            while (batch.Selected >= BatchSize);
 
             this.logger.Log(
                 removed > 0 ? LogLevel.Information : LogLevel.Debug,
@@ -103,8 +105,10 @@ internal sealed class TrackedUrlCleanupJob : IDistributedBackgroundJob
                 removed,
                 cutoff);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
+            // A shutdown, whatever the provider threw for it: SqlClient reports a cancelled command as a SqlException
+            // ("Operation cancelled by user"), not as an OperationCanceledException.
             this.logger.Log(
                 removed > 0 ? LogLevel.Information : LogLevel.Debug,
                 "Clean-up of tracked 404 URLs stopped by shutdown after removing {Count}.",
