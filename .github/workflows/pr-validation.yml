@@ -99,6 +99,13 @@ jobs:
           ./.github/scripts/tests/check-doc-samples.tests.ps1
           ./.github/scripts/check-doc-samples.ps1
 
+      # Relative links and anchors in docs/, the README and the NuGet readme (the check's own tests run first).
+      - name: Check documentation links
+        shell: pwsh
+        run: |
+          ./.github/scripts/tests/check-doc-links.tests.ps1
+          ./.github/scripts/check-doc-links.ps1
+
       # E2E against the committed single-site scenario database (unattended install is a no-op).
       - name: E2E install dependencies
         run: npm ci
