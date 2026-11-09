@@ -92,6 +92,13 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/check-package.ps1 -PackageDirectory "${{ env.NuGetDirectory }}"
 
+      # Every code block quoted in docs/ must match the compiled sample it quotes (the check's own tests run first).
+      - name: Check documentation samples
+        shell: pwsh
+        run: |
+          ./.github/scripts/tests/check-doc-samples.tests.ps1
+          ./.github/scripts/check-doc-samples.ps1
+
       # E2E against the committed single-site scenario database (unattended install is a no-op).
       - name: E2E install dependencies
         run: npm ci
