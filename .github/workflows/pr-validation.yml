@@ -52,6 +52,11 @@ jobs:
         run: npm test
         working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
 
+      # The documentation samples (redirect form, row action) are type-checked here, never bundled.
+      - name: Check client samples
+        run: npm run check-samples
+        working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
+
       - name: NPM build
         run: npm run build
         working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
