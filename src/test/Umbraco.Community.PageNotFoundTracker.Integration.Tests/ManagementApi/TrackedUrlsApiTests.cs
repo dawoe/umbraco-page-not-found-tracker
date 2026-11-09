@@ -296,6 +296,7 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
                 (ApiBase + "/block-rules", "GetBlockRules"),
                 (ApiBase + "/block-rules", "CreateBlockRule"),
                 (ApiBase + "/block-rules/{id}", "DeleteBlockRule"),
+                (ApiBase + "/block-rules/{id}", "UpdateBlockRule"),
                 (ApiBase + "/block-rules/scope-options", "GetBlockScopeOptions"),
             }));
         Assert.Multiple(() =>
