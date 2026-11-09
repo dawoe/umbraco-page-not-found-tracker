@@ -54,7 +54,12 @@ internal static class TrackedUrlNormalizer
             utcNow);
     }
 
-    private static string NormalizePath(string path)
+    /// <summary>
+    /// Normalises a path: leading slash, repeated slashes collapsed, trailing slash dropped, lower-cased.
+    /// </summary>
+    /// <param name="path">The path.</param>
+    /// <returns>The normalised path.</returns>
+    internal static string NormalizePath(string path)
     {
         var builder = new StringBuilder(path.Length + 1);
         builder.Append('/');
@@ -76,7 +81,13 @@ internal static class TrackedUrlNormalizer
         return builder.ToString().ToLowerInvariant();
     }
 
-    private static string RelativeTo(string path, string domainName)
+    /// <summary>
+    /// Removes the domain's own path from a normalised path.
+    /// </summary>
+    /// <param name="path">The normalised path.</param>
+    /// <param name="domainName">The lower-cased domain name, possibly with a path.</param>
+    /// <returns>The path relative to the domain.</returns>
+    internal static string RelativeTo(string path, string domainName)
     {
         string name = domainName;
         int schemeIndex = name.IndexOf("://", StringComparison.Ordinal);
@@ -105,7 +116,12 @@ internal static class TrackedUrlNormalizer
         return path.StartsWith(prefix + "/", StringComparison.Ordinal) ? path[prefix.Length..] : path;
     }
 
-    private static string Hash(string url)
+    /// <summary>
+    /// Computes the SHA-256 hash of a value as lower-case hex.
+    /// </summary>
+    /// <param name="url">The value to hash.</param>
+    /// <returns>The 64 character hash.</returns>
+    internal static string Hash(string url)
     {
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(url)));
     }

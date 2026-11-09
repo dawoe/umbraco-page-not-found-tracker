@@ -13,8 +13,8 @@ namespace Umbraco.Community.PageNotFoundTracker.Integration.Tests;
 /// <remarks>
 /// <c>UmbracoTestServerTestBase</c> builds its pipeline in a non-virtual <c>Configure(IApplicationBuilder)</c> and has
 /// no <c>WebApplication</c>, so <c>UsePageNotFoundTracker()</c> cannot be called. The startup filter runs before that
-/// <c>Configure</c> and calls <c>UseFileNotFoundHandling()</c>, the method that
-/// <c>UsePageNotFoundTracker()</c> delegates to.
+/// <c>Configure</c> and calls <c>UseBlocking()</c> and <c>UseFileNotFoundHandling()</c>, the methods that
+/// <c>UsePageNotFoundTracker()</c> delegates to, in the same order.
 /// </remarks>
 internal sealed class PageNotFoundTrackerStartupFilter : IStartupFilter
 {
@@ -22,6 +22,7 @@ internal sealed class PageNotFoundTrackerStartupFilter : IStartupFilter
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
         app =>
         {
+            app.UseBlocking();
             app.UseFileNotFoundHandling();
             next(app);
         };

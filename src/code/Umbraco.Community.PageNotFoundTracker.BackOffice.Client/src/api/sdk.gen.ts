@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateTrackedUrlRedirectData, CreateTrackedUrlRedirectErrors, CreateTrackedUrlRedirectResponses, GetDashboardAccessData, GetDashboardAccessErrors, GetDashboardAccessResponses, GetTrackedUrlFilterOptionsData, GetTrackedUrlFilterOptionsErrors, GetTrackedUrlFilterOptionsResponses, GetTrackedUrlsData, GetTrackedUrlsErrors, GetTrackedUrlsResponses } from './types.gen';
+import type { CreateBlockRuleData, CreateBlockRuleErrors, CreateBlockRuleResponses, CreateTrackedUrlRedirectData, CreateTrackedUrlRedirectErrors, CreateTrackedUrlRedirectResponses, DeleteBlockRuleData, DeleteBlockRuleErrors, DeleteBlockRuleResponses, GetBlockRulesData, GetBlockRulesErrors, GetBlockRulesResponses, GetBlockScopeOptionsData, GetBlockScopeOptionsErrors, GetBlockScopeOptionsResponses, GetDashboardAccessData, GetDashboardAccessErrors, GetDashboardAccessResponses, GetTrackedUrlFilterOptionsData, GetTrackedUrlFilterOptionsErrors, GetTrackedUrlFilterOptionsResponses, GetTrackedUrlsData, GetTrackedUrlsErrors, GetTrackedUrlsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -21,6 +21,34 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 export const getDashboardAccess = <ThrowOnError extends boolean = true>(options?: Options<GetDashboardAccessData, ThrowOnError>): RequestResult<GetDashboardAccessResponses, GetDashboardAccessErrors, ThrowOnError> => (options?.client ?? client).get<GetDashboardAccessResponses, GetDashboardAccessErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/umbraco/pagenotfoundtracker/api/v1/access',
+    ...options
+});
+
+export const getBlockRules = <ThrowOnError extends boolean = true>(options?: Options<GetBlockRulesData, ThrowOnError>): RequestResult<GetBlockRulesResponses, GetBlockRulesErrors, ThrowOnError> => (options?.client ?? client).get<GetBlockRulesResponses, GetBlockRulesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules',
+    ...options
+});
+
+export const createBlockRule = <ThrowOnError extends boolean = true>(options?: Options<CreateBlockRuleData, ThrowOnError>): RequestResult<CreateBlockRuleResponses, CreateBlockRuleErrors, ThrowOnError> => (options?.client ?? client).post<CreateBlockRuleResponses, CreateBlockRuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
+    }
+});
+
+export const deleteBlockRule = <ThrowOnError extends boolean = true>(options: Options<DeleteBlockRuleData, ThrowOnError>): RequestResult<DeleteBlockRuleResponses, DeleteBlockRuleErrors, ThrowOnError> => (options.client ?? client).delete<DeleteBlockRuleResponses, DeleteBlockRuleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules/{id}',
+    ...options
+});
+
+export const getBlockScopeOptions = <ThrowOnError extends boolean = true>(options?: Options<GetBlockScopeOptionsData, ThrowOnError>): RequestResult<GetBlockScopeOptionsResponses, GetBlockScopeOptionsErrors, ThrowOnError> => (options?.client ?? client).get<GetBlockScopeOptionsResponses, GetBlockScopeOptionsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules/scope-options',
     ...options
 });
 

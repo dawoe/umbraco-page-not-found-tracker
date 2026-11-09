@@ -4,6 +4,34 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type BlockRuleResponseModel = {
+    id: number;
+    pattern: string;
+    statusCode: number;
+    domain: string;
+    culture: string;
+    created: string;
+};
+
+export type BlockRuleSortColumn = 'Created' | 'Pattern' | 'StatusCode' | 'Domain' | 'Culture';
+
+export type BlockScopeOptionsResponseModel = {
+    domains: Array<string>;
+    cultures: Array<string>;
+};
+
+export type CreateBlockRuleRequestModel = {
+    pattern?: string | null;
+    statusCode: number;
+    domain?: string | null;
+    culture?: string | null;
+};
+
+export type CreateBlockRuleResponseModel = {
+    recordsRemoved: boolean;
+    message?: string | null;
+};
+
 export type CreateRedirectRequestModel = {
     payload?: unknown;
 };
@@ -18,6 +46,11 @@ export type DashboardAccessResponseModel = {
 };
 
 export type DirectionModel = 'Ascending' | 'Descending';
+
+export type PagedBlockRuleResponseModel = {
+    total: number;
+    items: Array<BlockRuleResponseModel>;
+};
 
 export type PagedTrackedUrlResponseModel = {
     total: number;
@@ -77,6 +110,160 @@ export type GetDashboardAccessResponses = {
 };
 
 export type GetDashboardAccessResponse = GetDashboardAccessResponses[keyof GetDashboardAccessResponses];
+
+export type GetBlockRulesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        skip?: number;
+        take?: number;
+        orderBy?: BlockRuleSortColumn;
+        direction?: DirectionModel;
+        search?: string;
+        domain?: string;
+        noDomain?: boolean;
+        culture?: string;
+        noCulture?: boolean;
+    };
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules';
+};
+
+export type GetBlockRulesErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type GetBlockRulesError = GetBlockRulesErrors[keyof GetBlockRulesErrors];
+
+export type GetBlockRulesResponses = {
+    /**
+     * OK
+     */
+    200: PagedBlockRuleResponseModel;
+};
+
+export type GetBlockRulesResponse = GetBlockRulesResponses[keyof GetBlockRulesResponses];
+
+export type CreateBlockRuleData = {
+    body?: CreateBlockRuleRequestModel;
+    path?: never;
+    query?: never;
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules';
+};
+
+export type CreateBlockRuleErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type CreateBlockRuleError = CreateBlockRuleErrors[keyof CreateBlockRuleErrors];
+
+export type CreateBlockRuleResponses = {
+    /**
+     * OK
+     */
+    200: CreateBlockRuleResponseModel;
+};
+
+export type CreateBlockRuleResponse = CreateBlockRuleResponses[keyof CreateBlockRuleResponses];
+
+export type DeleteBlockRuleData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules/{id}';
+};
+
+export type DeleteBlockRuleErrors = {
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Not Found
+     */
+    404: ProblemDetails;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type DeleteBlockRuleError = DeleteBlockRuleErrors[keyof DeleteBlockRuleErrors];
+
+export type DeleteBlockRuleResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type GetBlockScopeOptionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules/scope-options';
+};
+
+export type GetBlockScopeOptionsErrors = {
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type GetBlockScopeOptionsError = GetBlockScopeOptionsErrors[keyof GetBlockScopeOptionsErrors];
+
+export type GetBlockScopeOptionsResponses = {
+    /**
+     * OK
+     */
+    200: BlockScopeOptionsResponseModel;
+};
+
+export type GetBlockScopeOptionsResponse = GetBlockScopeOptionsResponses[keyof GetBlockScopeOptionsResponses];
 
 export type GetTrackedUrlsData = {
     body?: never;

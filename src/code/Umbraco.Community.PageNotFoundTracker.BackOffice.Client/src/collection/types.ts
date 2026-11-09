@@ -14,11 +14,11 @@ export const PNFT_EMPTY = '\u0000empty';
 /** The value of the domain or culture filter: a value, the {@link PNFT_EMPTY} marker, or undefined for all. */
 export type PnftFilterValue = string;
 
-/** The filter the collection passes to the repository. */
-export interface PnftCollectionFilter {
+/** The filter a collection passes to its repository (the API's list parameters before mapping), per sort column type. */
+export interface PnftPagedFilter<TOrderBy extends string> {
   skip: number;
   take: number;
-  orderBy: TrackedUrlSortColumn;
+  orderBy: TOrderBy;
   direction: DirectionModel;
   search?: string;
   domain?: PnftFilterValue;
@@ -28,18 +28,24 @@ export interface PnftCollectionFilter {
 /**
  * The filter as the Umbraco collection context holds it: the framework's `skip`, `take` and `filter`
  * (the search text) and its `orderBy`/`orderDirection` ordering keys, plus the domain and culture filters.
- * The repository maps it to {@link PnftCollectionFilter} with `fromCollectionFilter`.
+ * The repository maps it to {@link PnftPagedFilter} with `fromCollectionFilter`.
  */
-export interface PnftTrackedUrlCollectionFilterModel {
+export interface PnftPagedCollectionFilterModel<TOrderBy extends string = string> {
   skip?: number;
   take?: number;
-  /** The URL search text (the framework's text filter). */
+  /** The search text (the framework's text filter). */
   filter?: string;
-  orderBy?: TrackedUrlSortColumn;
+  orderBy?: TOrderBy;
   orderDirection?: DirectionModel;
   domain?: PnftFilterValue;
   culture?: PnftFilterValue;
 }
+
+/** The filter the tracked URL collection passes to the repository. */
+export type PnftCollectionFilter = PnftPagedFilter<TrackedUrlSortColumn>;
+
+/** The filter of the tracked URL collection as the collection context holds it. */
+export type PnftTrackedUrlCollectionFilterModel = PnftPagedCollectionFilterModel<TrackedUrlSortColumn>;
 
 /** One row of the tracked URL collection. */
 export interface PnftTrackedUrlCollectionModel {
@@ -60,10 +66,13 @@ export interface PnftTrackedUrlCollectionModel {
   canCreateRedirect: boolean;
 }
 
-/** The choices of the domain and culture filters. */
-export interface PnftTrackedUrlFilterOptionsModel {
+/** The choices of a collection's domain and culture filters. */
+export interface PnftFilterOptionsModel {
   domains: Array<string>;
   cultures: Array<string>;
   hasEmptyDomain: boolean;
   hasEmptyCulture: boolean;
 }
+
+/** The choices of the tracked URL collection's domain and culture filters. */
+export type PnftTrackedUrlFilterOptionsModel = PnftFilterOptionsModel;

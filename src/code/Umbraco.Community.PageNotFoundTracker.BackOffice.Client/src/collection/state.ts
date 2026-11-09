@@ -1,4 +1,4 @@
-import { PNFT_EMPTY, type PnftTrackedUrlCollectionFilterModel } from './types.js';
+import { PNFT_EMPTY, type PnftPagedCollectionFilterModel } from './types.js';
 
 // Pure helpers of the collection's own state (errors, page size, page reset). No backoffice runtime imports,
 // so they run in Vitest without a browser.
@@ -34,7 +34,7 @@ export function classifyError(error: unknown): PnftCollectionErrorKind | undefin
 }
 
 /** Whether the search or a domain/culture filter narrows the list (so an empty list means "no match"). */
-export function isFilterActive(filter: PnftTrackedUrlCollectionFilterModel): boolean {
+export function isFilterActive(filter: PnftPagedCollectionFilterModel): boolean {
   const hasSearch = typeof filter.filter === 'string' && filter.filter.trim() !== '';
   const hasDomain = filter.domain === PNFT_EMPTY || (typeof filter.domain === 'string' && filter.domain !== '');
   const hasCulture = filter.culture === PNFT_EMPTY || (typeof filter.culture === 'string' && filter.culture !== '');
@@ -55,7 +55,7 @@ export function pickEmptyState(error: PnftCollectionErrorKind | undefined, filte
  * Returns the filter change with `skip: 0` added, so search, filter, sort and page size changes start on
  * page 1. A change that sets `skip` itself (a page change, a restored page) is kept as it is.
  */
-export function withPageReset(change: PnftTrackedUrlCollectionFilterModel): PnftTrackedUrlCollectionFilterModel {
+export function withPageReset<T extends PnftPagedCollectionFilterModel>(change: T): T {
   return 'skip' in change ? change : { ...change, skip: 0 };
 }
 

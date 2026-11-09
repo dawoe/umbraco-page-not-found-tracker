@@ -10,13 +10,8 @@ namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 /// Finds the Umbraco domain that serves a request by reading the domains from <see cref="IDomainCache"/>.
 /// </summary>
 /// <remarks>
-/// Umbraco's public <c>DomainUtilities.SelectDomain</c>/<c>SelectDomains</c> are not used: they work on
-/// <c>DomainAndUri</c> pairs built from the current request URI and select on the authority only, so they cannot tell
-/// <c>localhost:44402/sitea</c> from <c>localhost:44402/siteb</c>, and they cannot be fed a request that has no
-/// published request. This class therefore implements the match itself: the host (case-insensitive) and the port must
-/// equal the request's, and the domain path (if any) must be a segment prefix of the request path (case-insensitive).
-/// The most specific (longest) path wins, so a domain with a path beats a bare host. A domain stored without a port
-/// only matches a request without a port, as Umbraco matches on host plus port.
+/// The matching rules live in <see cref="DomainSelector"/> (shared with blocking): host and port must equal the
+/// request's, the domain path must be a segment prefix of the request path, and the longest path wins.
 /// </remarks>
 internal sealed class RequestDomainMatcher : IRequestDomainMatcher
 {
@@ -34,66 +29,18 @@ internal sealed class RequestDomainMatcher : IRequestDomainMatcher
     /// <inheritdoc />
     public Domain? Match(NotFoundRequestContext context)
     {
-        var requestPath = context.Path.TrimEnd('/');
-        Domain? best = null;
-        var bestLength = -1;
-
-        foreach (var domain in this.domainCache.GetAll(false))
+        var domains = new List<Domain>();
+        var entries = new List<DomainEntry>();
+        foreach (Domain domain in this.domainCache.GetAll(false))
         {
-            if (!TryParse(domain.Name, out var host, out var port, out var path))
+            if (DomainSelector.TryCreateEntry(domain, out DomainEntry? entry))
             {
-                continue;
-            }
-
-            if (!string.Equals(host, context.Host, StringComparison.OrdinalIgnoreCase) || port != context.Port)
-            {
-                continue;
-            }
-
-            var matches = path.Length == 0
-                || requestPath.Equals(path, StringComparison.OrdinalIgnoreCase)
-                || requestPath.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase);
-
-            if (matches && path.Length > bestLength)
-            {
-                best = domain;
-                bestLength = path.Length;
+                domains.Add(domain);
+                entries.Add(entry);
             }
         }
 
-        return best;
-    }
-
-    private static bool TryParse(string name, out string host, out int? port, out string path)
-    {
-        host = string.Empty;
-        port = null;
-        path = string.Empty;
-
-        var rest = name.Trim();
-        var schemeIndex = rest.IndexOf("://", StringComparison.Ordinal);
-        if (schemeIndex >= 0)
-        {
-            rest = rest[(schemeIndex + 3)..];
-        }
-
-        var slash = rest.IndexOf('/', StringComparison.Ordinal);
-        var authority = slash < 0 ? rest : rest[..slash];
-        path = slash < 0 ? string.Empty : rest[slash..].TrimEnd('/');
-
-        var colon = authority.LastIndexOf(':');
-        if (colon >= 0)
-        {
-            if (!int.TryParse(authority[(colon + 1)..], out var parsedPort))
-            {
-                return false;
-            }
-
-            port = parsedPort;
-            authority = authority[..colon];
-        }
-
-        host = authority;
-        return host.Length > 0;
+        int index = DomainSelector.SelectIndex(entries, context.Host, context.Port, context.Path);
+        return index < 0 ? null : domains[index];
     }
 }

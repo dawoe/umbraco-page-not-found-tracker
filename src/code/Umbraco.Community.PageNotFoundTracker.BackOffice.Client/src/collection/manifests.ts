@@ -10,7 +10,7 @@ const forThisCollection = [{ alias: UMB_COLLECTION_ALIAS_CONDITION, match: PNFT_
 
 /**
  * The tracked URL collection: repository, collection, its table view and its search box. Row actions are
- * entity actions for `PNFT_TRACKED_URL_ENTITY_TYPE` (none registered here; specs 5 and 6 add them).
+ * entity actions for `PNFT_TRACKED_URL_ENTITY_TYPE`, registered by redirect/ (create redirect) and blocking/ (block).
  */
 export const manifests: Array<UmbExtensionManifest> = [
   {
