@@ -99,6 +99,12 @@ export default {
     blockSavedHeadline: 'Rule saved',
     blockSaved: 'Matching requests are now blocked and no longer tracked.',
     blockSavedRecordsKept: 'The rule was saved, but the tracked URLs it covers could not be removed from the list.',
+    editRule: 'Edit',
+    editRuleHeadline: 'Edit block rule',
+    saveRule: 'Save',
+    ruleUpdated: 'The rule has been updated. Matching requests are blocked and no longer tracked.',
+    blockRuleExists: 'A rule with this pattern, domain and culture already exists.',
+    editRuleNotFound: 'This rule no longer exists. Close the dialog to reload the list.',
     unblock: 'Unblock',
     unblockHeadline: 'Unblock',
     unblockConfirmText: (pattern: string) =>
