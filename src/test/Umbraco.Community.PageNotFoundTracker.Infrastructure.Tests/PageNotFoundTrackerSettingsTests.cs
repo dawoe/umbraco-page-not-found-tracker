@@ -111,4 +111,67 @@ internal sealed class PageNotFoundTrackerSettingsTests
 
         Assert.That(settings.EffectiveChannelCapacity, Is.EqualTo(500));
     }
+
+    /// <summary>
+    /// Tests that the clean-up is on by default and removes URLs not seen for 365 days.
+    /// </summary>
+    [Test]
+    public void Cleanup_Settings_Have_Expected_Defaults()
+    {
+        var settings = new PageNotFoundTrackerSettings();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(settings.CleanupEnabled, Is.True);
+            Assert.That(settings.CleanupAfterDays, Is.EqualTo(365));
+            Assert.That(settings.EffectiveCleanupAfterDays, Is.EqualTo(365));
+        });
+    }
+
+    /// <summary>
+    /// Tests that the clean-up settings bind from configuration.
+    /// </summary>
+    [Test]
+    public void Cleanup_Settings_Bind_From_Configuration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Umbraco:Community:PageNotFoundTracker:CleanupEnabled"] = "false",
+                ["Umbraco:Community:PageNotFoundTracker:CleanupAfterDays"] = "30",
+            })
+            .Build();
+
+        var settings = configuration.GetSection("Umbraco:Community:PageNotFoundTracker").Get<PageNotFoundTrackerSettings>()!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(settings.CleanupEnabled, Is.False);
+            Assert.That(settings.CleanupAfterDays, Is.EqualTo(30));
+        });
+    }
+
+    /// <summary>
+    /// Tests that a clean-up age below one day falls back to the default.
+    /// </summary>
+    /// <param name="days">The configured number of days.</param>
+    [TestCase(0)]
+    [TestCase(-5)]
+    public void EffectiveCleanupAfterDays_Uses_Default_Below_One(int days)
+    {
+        var settings = new PageNotFoundTrackerSettings { CleanupAfterDays = days };
+
+        Assert.That(settings.EffectiveCleanupAfterDays, Is.EqualTo(365));
+    }
+
+    /// <summary>
+    /// Tests that a valid clean-up age is used as configured.
+    /// </summary>
+    [Test]
+    public void EffectiveCleanupAfterDays_Keeps_Valid_Value()
+    {
+        var settings = new PageNotFoundTrackerSettings { CleanupAfterDays = 30 };
+
+        Assert.That(settings.EffectiveCleanupAfterDays, Is.EqualTo(30));
+    }
 }
