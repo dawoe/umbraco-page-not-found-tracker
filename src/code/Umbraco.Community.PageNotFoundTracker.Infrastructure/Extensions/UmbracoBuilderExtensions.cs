@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Cms.Core.Notifications;
+using Umbraco.Cms.Infrastructure.BackgroundJobs;
 using Umbraco.Community.PageNotFoundTracker.Core;
 using Umbraco.Community.PageNotFoundTracker.Core.Blocking;
 using Umbraco.Community.PageNotFoundTracker.Core.Configuration;
@@ -15,6 +16,7 @@ using Umbraco.Community.PageNotFoundTracker.Infrastructure.Blocking;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Dashboard;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.NotFound;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Redirects;
+using Umbraco.Community.PageNotFoundTracker.Infrastructure.Retention;
 using Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 using Umbraco.Extensions;
 
@@ -58,12 +60,25 @@ internal static class UmbracoBuilderExtensions
         builder.Services.AddUnique<INotFoundRecorder, NotFoundTracker>();
         AddTrackingPersistence(builder.Services);
         AddBlocking(builder);
+        AddRetention(builder.Services);
 
         // Replaces Umbraco's ContentFinderByConfigured404 as the last-chance finder. Ours asks the resolver first and
         // delegates to Umbraco's finder when nothing resolves, so the built-in behaviour is kept, not removed.
         builder.SetContentLastChanceFinder<PageNotFoundLastChanceFinder>();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Registers the daily clean-up of old tracked URLs as an Umbraco distributed background job. The job is always
+    /// registered, also when the clean-up is switched off (it then does nothing), so the setting never adds or removes
+    /// Umbraco's job row.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    private static void AddRetention(IServiceCollection services)
+    {
+        services.AddUnique<ITrackedUrlCleaner, TrackedUrlCleaner>();
+        services.AddSingleton<IDistributedBackgroundJob, TrackedUrlCleanupJob>();
     }
 
     /// <summary>
