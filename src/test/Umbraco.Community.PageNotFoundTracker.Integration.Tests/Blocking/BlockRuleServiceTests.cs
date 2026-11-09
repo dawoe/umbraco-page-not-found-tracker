@@ -348,6 +348,74 @@ internal sealed class BlockRuleServiceTests : TrackingDatabaseFixture
         });
     }
 
+    /// <summary>
+    /// Editing a rule changes it in place (same id and created time, new spelling and status) and deletes the tracked rows
+    /// the new pattern covers.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_changes_the_rule_and_deletes_the_rows_the_new_pattern_covers()
+    {
+        await this.AddRowsAsync(Row("/old-a"), Row("/new-a"), Row("/new-b/x"), Row("/other"));
+        await this.service.CreateAsync("/old-a", 410, string.Empty, string.Empty, CancellationToken.None);
+        BlockRule before = (await this.GetRulesAsync()).Single();
+
+        CreateBlockRuleOutcome outcome = await this.service.UpdateAsync(before.Id, "/New-*", 403, string.Empty, string.Empty, CancellationToken.None);
+
+        BlockRule after = (await this.GetRulesAsync()).Single();
+        Assert.Multiple(async () =>
+        {
+            Assert.That(outcome, Is.EqualTo(new CreateBlockRuleOutcome(CreateBlockRuleStatus.Saved, null, true)));
+            Assert.That(after.Id, Is.EqualTo(before.Id));
+            Assert.That(after.Created, Is.EqualTo(before.Created));
+            Assert.That((after.Pattern, after.DisplayPattern, after.StatusCode), Is.EqualTo(("/new-*", "/New-*", 403)));
+            Assert.That((await this.GetRowsAsync()).Select(r => r.RelativePath), Is.EqualTo(new[] { "/other" }));
+        });
+    }
+
+    /// <summary>
+    /// Editing a rule into the identity of another rule is refused and changes neither rule.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_into_another_rules_identity_is_refused_and_changes_nothing()
+    {
+        await this.service.CreateAsync("/a", 410, string.Empty, string.Empty, CancellationToken.None);
+        await this.service.CreateAsync("/b", 404, string.Empty, string.Empty, CancellationToken.None);
+        int bId = (await this.GetRulesAsync()).Single(r => r.Pattern == "/b").Id;
+
+        CreateBlockRuleOutcome outcome = await this.service.UpdateAsync(bId, "/A/", 403, string.Empty, string.Empty, CancellationToken.None);
+
+        List<BlockRule> rules = await this.GetRulesAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Conflict));
+            Assert.That(outcome.Message, Is.EqualTo(BlockingConstants.RuleExistsMessage));
+            Assert.That(rules.Select(r => (r.Pattern, r.StatusCode)), Is.EqualTo(new[] { ("/a", 410), ("/b", 404) }));
+        });
+    }
+
+    /// <summary>
+    /// After a rule is edited to another pattern, the old path is tracked again from a count of one.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_then_old_path_is_tracked_again_from_one()
+    {
+        TrackedUrl row = Row("/old");
+        row.HitCount = 5;
+        await this.AddRowsAsync(row);
+        await this.service.CreateAsync("/old", 410, string.Empty, string.Empty, CancellationToken.None);
+        int id = (await this.GetRulesAsync()).Single().Id;
+
+        await this.service.UpdateAsync(id, "/new", 410, string.Empty, string.Empty, CancellationToken.None);
+        this.queue.TryEnqueue(Hit(Row("/old")));
+        await this.flushService.FlushAsync(CancellationToken.None);
+
+        List<TrackedUrl> rows = await this.GetRowsAsync();
+        Assert.That(rows.Select(r => (r.RelativePath, r.HitCount)), Is.EqualTo(new[] { ("/old", 1L) }));
+    }
+
     private static BlockRuleQuery Query(
         int skip = 0,
         int take = 20,
