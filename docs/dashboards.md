@@ -69,7 +69,8 @@ The newest rule is on top. You can search patterns, filter on domain and culture
 many rules are shown per page, the same way as in the other list.
 
 - **Add rule** (top right) opens the dialog to add a pattern by hand.
-- **Unblock** (on a row) removes the rule after a confirmation. The URLs are answered normally again, and tracked again
-  from then on.
+- **Edit** (the button on a row) opens the rule for changes (see [Blocking](blocking.md#edit-a-rule)).
+- **Unblock** (in the **...** menu next to it) removes the rule after a confirmation. The URLs are answered normally
+  again, and tracked again from then on.
 
 How patterns work is explained in [Blocking](blocking.md).

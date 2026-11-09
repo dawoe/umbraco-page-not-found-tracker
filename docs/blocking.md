@@ -23,10 +23,21 @@ In the dialog:
 | Status code | **403 Forbidden**, **404 Not Found** or **410 Gone** (the default) |
 
 When you confirm, the rule is active at once (on every server) and the tracked URLs it covers are removed from the
-list. To remove a rule, click **Unblock** in the **Blocked URLs** dashboard. Requests are then answered normally again
-and tracked again from one.
+list. To remove a rule, click **Unblock** in the row's **...** menu in the **Blocked URLs** dashboard. Requests are
+then answered normally again and tracked again from one.
 
 > **A rule applies to every matching request**, not only to missing ones. A page or file that exists is blocked too.
+
+## Edit a rule
+
+In the **Blocked URLs** dashboard click **Edit** on a row. The same dialog opens with the rule's values, and every
+field can be changed: pattern, domain, culture and status code.
+
+When you click **Save**, the change applies at once (on every server):
+
+- The tracked URLs the new pattern covers are removed from the list.
+- URLs the old pattern covered but the new one does not are answered normally again, and tracked again from one.
+- The rule keeps its **Created** date.
 
 ## Pattern syntax
 
@@ -78,6 +89,8 @@ The dialog refuses a rule, and shows why, when:
 - The pattern has no character besides `/` and `*`, such as `/*`: *"The pattern must contain at least one character
   besides '/' and '*'."*
 - The status code is outside 400 to 499 (only possible through the API).
+- An edit gives the rule the same pattern, domain and culture as another rule: *"A rule with this pattern, domain and
+  culture already exists."*
 
 On top of that, Umbraco's own paths are never blocked while the site runs, whatever a rule says. A pattern such as
 `/*.php` is accepted, but it never blocks `/umbraco/anything.php`.

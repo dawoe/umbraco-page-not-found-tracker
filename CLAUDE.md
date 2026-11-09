@@ -16,7 +16,8 @@ blocked URLs (spec 6: wildcard block rules with a status code and a domain/cultu
 empty body, never tracked; a "Block" row action and a second "Blocked URLs" dashboard tab).
 Implementer documentation (spec 7: the public `docs/` set, compiled samples and three CI checks) is built; see
 Documentation (spec 7) below. Retention (spec 8, issue #7: a daily distributed job removes tracked URLs not seen for
-`CleanupAfterDays`, default 365) is built; see Retention (spec 8) below. **A change to a setting, a contract, an extension point or documented behaviour must
+`CleanupAfterDays`, default 365) is built; see Retention (spec 8) below. Editing block rules (spec 9, issue #11: the pattern,
+status code, domain and culture of an existing rule changed in place) is built; see Blocked URLs below. **A change to a setting, a contract, an extension point or documented behaviour must
 update the docs (and the quoted samples) in the same change.**
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
@@ -29,6 +30,7 @@ Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spe
 6. Blocked URLs: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md` (done)
 7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md` (done)
 8. Retention and clean-up of tracked URLs (issue #7): `docs/superpowers/specs/2026-11-09-retention-cleanup-design.md` (done)
+9. Edit block rules (issue #11): `docs/superpowers/specs/2026-11-09-edit-block-rules-design.md` (done)
 
 Plans (`docs/superpowers/plans/`):
 
@@ -40,6 +42,7 @@ Plans (`docs/superpowers/plans/`):
 - Blocked URLs: `docs/superpowers/plans/2026-11-04-blocked-urls.md`
 - Documentation: `docs/superpowers/plans/2026-11-09-documentation.md`
 - Retention: `docs/superpowers/plans/2026-11-09-retention-cleanup.md`
+- Edit block rules: `docs/superpowers/plans/2026-11-09-edit-block-rules.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -944,6 +947,9 @@ A block rule (wildcard pattern, status code, domain and culture scope) answers m
 and an empty body, for any method, before static files, redirects and routing; a blocked request is never tracked,
 independent of `TrackingEnabled`, and no database is read on the request path. Saving a rule deletes the tracked URLs it
 covers. Spec: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md`; plan `docs/superpowers/plans/2026-11-04-blocked-urls.md`.
+Rules can be edited in place (spec 9, issue #11: `docs/superpowers/specs/2026-11-09-edit-block-rules-design.md`; plan
+`docs/superpowers/plans/2026-11-09-edit-block-rules.md`): pattern, status code, domain and culture change, `Id` and `Created`
+stay, the tracked URLs the new pattern covers are deleted and the URLs only the old pattern covered are tracked again from 1.
 
 **Rule model and identity.** `BlockRule` (Core, `...Core.Blocking`): `Id`, `Pattern` (normalised), `PatternHash`,
 `DisplayPattern`, `StatusCode`, `Domain`, `Culture`, `Created` (UTC `DateTime`). Table `pageNotFoundTrackerBlockRule`
@@ -1016,7 +1022,7 @@ swallowed, then `base.Refresh`. The service talks to it through the internal sea
 in-memory predicate (pattern + domain + culture, ignoring case) used by the service and the refresher. The originating server
 runs both its own local refresh/discard and the refresher (harmless repetition). `BlockRuleCacheRefresherIntegrationTests` push a payload through Umbraco's `IJsonSerializer` into `Refresh(string json)` (the only path that reaches other servers; the positional record and its enum bind fine, no payload change needed).
 
-**Create and delete** (`IBlockRuleService` in Core, `BlockRuleService` internal, `AddUnique`). `CreateAsync(pattern,
+**Create, update and delete** (`IBlockRuleService` in Core, `BlockRuleService` internal, `AddUnique`). `CreateAsync(pattern,
 statusCode, domain, culture, ct)`: normalise, canonicalise the scope, validate (`Invalid` with the message, nothing else
 happens), upsert (`ExecuteUpdate` of the status by identity, else insert; on a unique violation the update is retried once),
 then (using `CancellationToken.None`: once the rule is committed a client abort must not leave the stored and the enforced rules out of step, so the request token only guards the upsert and, in delete, the rule delete) `RefreshAsync`, then notify `Saved` (a failing notifier is a warning), then inside `RunExclusiveAsync`:
@@ -1027,6 +1033,17 @@ without `/*` for a trailing `/*`, added as `OR RelativePath = @exact`), plus `Do
 `Like_and_matcher_agree` (unit, SQLite) and `Like_delete_and_matcher_select_the_same_rows` (integration, SQLite and SQL
 Server) prove the SQL and `CompiledBlockPattern` select the same rows, `%`, `_`, `[`, `\` included. A failing removal keeps
 the rule: `CreateBlockRuleOutcome(Saved, BlockingConstants.RecordsNotRemovedMessage, RecordsRemoved: false)`.
+`UpdateAsync(id, pattern, statusCode, domain, culture, ct)` shares `PrepareAsync` with create (normalise, canonicalise the
+scope, validate; `Invalid` changes nothing), then loads the rule by id (`NotFound`), then `CollidesAsync` (another rule with
+the new identity, `Id != id`) answers `Conflict` with `BlockingConstants.RuleExistsMessage` ("A rule with this pattern,
+domain and culture already exists."); unlike re-adding, an edit never merges into another rule. `CreateBlockRuleStatus`
+gained `NotFound` and `Conflict`; `CreateAsync` never returns them. The write is one `ExecuteUpdate` by id of `Pattern`,
+`PatternHash`, `DisplayPattern` (the new trimmed input), `StatusCode`, `Domain` and `Culture`; `Id` and `Created` are
+untouched, and zero rows (deleted meanwhile) is `NotFound`. A `DbException` on the write (a concurrent insert of the same
+identity) re-runs the collision query and answers `Conflict` only when a colliding row exists, else rethrows. Changing only
+the status or the spelling of the same rule is `Saved`. Then the tail shared with create (`CompleteSaveAsync`, with
+`CancellationToken.None`): `RefreshAsync`, one `Saved` payload with the **new** values, then the discard and delete of what
+the new pattern covers (`RemoveMatchingRecordsAsync`).
 `DeleteAsync(id)` deletes by id (false for an unknown id), then refreshes and notifies `Removed`; hits after that are
 tracked again from count 1. `QueryAsync` mirrors the tracked URL query (search on the normalised `Pattern` with
 `LikePattern.Contains`, Any/Empty/Exactly filters, Id tie-break, take clamped 1 to 100). `GetScopeOptionsAsync`: Umbraco's
@@ -1035,7 +1052,7 @@ domain names (no wildcard domains) trimmed, lower-cased, distinct, ordinal-sorte
 **Accepted limits.** A hit that passed the middleware just before the refresh can be enqueued after the discard and be
 written back as a count-1 row on that server (`NotFoundTracker` does not consult the snapshot). On other servers the discard
 is best effort (their refresher runs whenever the distributed cache delivers the instruction).
-A failed `RefreshAsync` in create/delete is not logged by the service (the provider logs it).
+A failed `RefreshAsync` in create/update/delete is not logged by the service (the provider logs it).
 
 **Endpoints** (BackOffice, base `/umbraco/pagenotfoundtracker/api/v1`, policy `PageNotFoundTracker.DashboardAccess`, same
 OpenAPI document; 401 anonymous, 403 outside the groups, 503 when persistence is `Unavailable`):
@@ -1044,6 +1061,7 @@ OpenAPI document; 401 anonymous, 403 outside the groups, 503 when persistence is
 |---|---|---|
 | `GetBlockRules` | `GET block-rules` | 200 `PagedViewModel<BlockRuleResponseModel>` (`id`, `pattern` = `DisplayPattern`, `statusCode`, `domain`, `culture`, `created` UTC); 400; 503. Query as `GetTrackedUrls` (`skip`, `take` 1 to 100, `search`, `domain`/`noDomain`, `culture`/`noCulture`), `orderBy` `Created` (default), `Pattern`, `StatusCode`, `Domain`, `Culture`, `direction` default `Descending` |
 | `CreateBlockRule` | `POST block-rules` | body `{ pattern, statusCode, domain?, culture? }` (null domain/culture = all); 200 `{ recordsRemoved, message }`; 400 (blank pattern, malformed body, or the validator's message as problem `detail`); 503 |
+| `UpdateBlockRule` | `PUT block-rules/{id:int}` | `UpdateBlockRuleController`; body as `CreateBlockRule` (`CreateBlockRuleRequestModel`); 200 `{ recordsRemoved, message }` (`CreateBlockRuleResponseModel`); 400 (blank pattern or the validator's message as `detail`); 404 problem "Block rule not found"; 409 problem "Block rule exists" with `RuleExistsMessage` as `detail`; 503 |
 | `DeleteBlockRule` | `DELETE block-rules/{id:int}` | 200 empty; 404 problem; 503 |
 | `GetBlockScopeOptions` | `GET block-rules/scope-options` | 200 `{ domains, cultures }` (configured in Umbraco, not from the rules); 503 |
 
@@ -1057,12 +1075,22 @@ created; empty scope shown as "All domains"/"All cultures"; default order create
 `Pnft.CollectionTextFilter.BlockRule`. Collection action `Pnft.CollectionAction.BlockRule.Add` (kind `button`: 17.8 has no
 `default` collection action kind) opens the rule modal empty. Entity actions: `Pnft.EntityAction.TrackedUrl.Block` (see Row
 actions; defaults: the row's relative path with any `?query` dropped, the row's domain and culture, 410) and
-`Pnft.EntityAction.BlockRule.Unblock` (Umbraco's confirm modal `umb-confirm-modal`, buttons `#confirm`/`#cancel`; a 404 shows
+`Pnft.EntityAction.BlockRule.Edit` (`edit-rule.action.ts`, kind `default`, weight 0, `icon-edit`, label
+`#pageNotFoundTracker_editRule`; opens the rule modal in edit mode with the title `#pageNotFoundTracker_editRuleHeadline`) and
+`Pnft.EntityAction.BlockRule.Unblock` (weight **-10**, so Edit is the row's inline button and Unblock sits in the
+`umb-entity-actions-dropdown`; Umbraco's confirm modal `umb-confirm-modal`, buttons `#confirm`/`#cancel`; a 404 shows
 the client's own text). Modal `Pnft.Modal.CreateBlockRule` (sidebar, small; `rule-modal.element.ts`): pattern required
 (placeholder `/wp-admin/*`), domain and culture selects from `GetBlockScopeOptions` plus the preselected value, status
 403/404/410, a static warning, the 400 `detail` inline, Confirm disabled while sending; `open-rule-modal.ts` (shared by
 Block and Add rule) captures the notification context and localization first, reloads the collection and shows a success
-toast, or a warning toast with the server message when `recordsRemoved` is false. The list's domain/culture filter choices
+toast, or a warning toast with the server message when `recordsRemoved` is false. Edit mode is keyed on
+`PnftBlockRuleModalData.ruleId`: the modal is prefilled with the rule, Confirm reads `#pageNotFoundTracker_saveRule`
+("Save") and sends `updateRule(send, id, request)` (`block-rule.service.ts`, `PnftUpdateRuleSend`, wrapping the generated
+`updateBlockRule({ path: { id }, body })`); its result kinds `conflict` (409) and `notFound` are shown inline
+(`pageNotFoundTracker_blockRuleExists`, `pageNotFoundTracker_editRuleNotFound`). The status select uses
+`buildStatusChoices(current)` (`rule-form.ts`): 403/404/410 plus a current code outside them (set through the API) shown as
+its bare number. In edit mode `open-rule-modal.ts` reloads the list on any cancel and shows `pageNotFoundTracker_ruleUpdated`
+as the success text. The list's domain/culture filter choices
 also come from `GetBlockScopeOptions` (there is no rule filter-options endpoint), so a rule for a domain later removed from
 Umbraco cannot be filtered by its value (it still shows under "Any domain"). `PnftBlockRuleCollectionContext` is a thin
 subclass of `PnftPagedCollectionContextBase` with `pnftCollection = 'block-rule'`; its token
@@ -1072,23 +1100,33 @@ token would bind to the other collection). Texts: `pageNotFoundTracker_*` in `lo
 **Data marks** (`src/blocking/data-marks.ts`, `PNFT_BLOCK_DATA_MARKS` and `PNFT_BLOCK_SORT_MARKS`, all `pnft-block-*`: list,
 filters, states, modal fields and buttons, `pnft-block-sort-<column>`); `tests/blocked.spec.ts` keeps a copy in its `MARKS`
 constant: change both together. Umbraco's own: `entity-action:Pnft.EntityAction.TrackedUrl.Block`,
-`entity-action:Pnft.EntityAction.BlockRule.Unblock`, `collection-action:Pnft.CollectionAction.BlockRule.Add`. Select option
+`entity-action:Pnft.EntityAction.BlockRule.Edit`, `entity-action:Pnft.EntityAction.BlockRule.Unblock`, `collection-action:Pnft.CollectionAction.BlockRule.Add`. Select option
 values `all`, `empty`, `v:<value>`; status values `403`, `404`, `410`.
 
 **Tests.** Unit (Infrastructure.Tests `Blocking/`): `BlockPatternNormalizerTests`, `CompiledBlockPatternTests`,
 `BlockPatternValidatorTests`, `BlockLikePatternTests` (incl. the SQLite parity test), `BlockSnapshotTests` (precedence table,
 alias stripping, owned paths), `BlockSnapshotProviderTests`, `BlockSnapshotServiceTests`, `BlockMiddlewareTests`,
 `BlockRuleServiceTests`, `BlockRuleCacheRefresherTests`; plus `NotFound/DomainSelectorTests`,
-`Tracking/TrackingQueueDiscardMatchingTests`; BackOffice.Tests `BlockRuleControllersTests`. Integration (`Blocking/`):
+`Tracking/TrackingQueueDiscardMatchingTests`; BackOffice.Tests `BlockRuleControllersTests`. Spec 9 added
+`BlockRuleServiceTests` `Update_*` (every field changed keeping `Id`/`Created` with the tail in order, unknown id, invalid,
+conflict, same rule with only the status or spelling changed, culture canonicalisation, delete failure, queued-hit discard
+in scope, cancelled after the write, a unique violation on the write injected with a `DbCommandInterceptor`) and
+`BlockRuleControllersTests` `Update_*` (200, null scope, 400 blank and invalid, 404, 409). Integration (`Blocking/`):
 `BlockRuleMigrationTests` and `BlockRuleServiceTests` (SQLite and SQL Server), `BlockSnapshotLoadTests`,
 `BlockMiddlewareIntegrationTests` (410 without body and not recorded, existing page, static file ahead of the static file
 middleware, block beats a redirect, owned paths), `BlockMiddlewareTrackingDisabledTests`,
 `BlockRuleCacheRefresherIntegrationTests`, `BlockScopeOptionsTests`; `ManagementApi/BlockRulesApiTests` (200/400/401/403/404,
-SQLite). Vitest: `block-rule.service`, `block-rule.mapping`, blocking `query`, `block-rule-table.columns`, `rule-form`,
-blocking `manifests`. E2E `tests/blocked.spec.ts` (single-site, `FlushInterval=00:00:01`, run-scoped prefix): block from a
+SQLite). Spec 9 added `Blocking/BlockRuleServiceTests` `Update_changes_the_rule_and_deletes_the_rows_the_new_pattern_covers`,
+`Update_into_another_rules_identity_is_refused_and_changes_nothing` and `Update_then_old_path_is_tracked_again_from_one`
+(SQLite and SQL Server), `BlockMiddlewareIntegrationTests.Edited_rule_frees_the_old_path_and_blocks_the_new_one`, and
+`BlockRulesApiTests` `Update_*` (200/400/404/409; the PUT is in the 401/403 tests). Vitest: `block-rule.service`, `block-rule.mapping`, blocking `query`, `block-rule-table.columns`, `rule-form`,
+blocking `manifests` (spec 9: `updateRule` and the 409 mapping, `buildStatusChoices`, Edit weight 0 above Unblock -10). E2E `tests/blocked.spec.ts` (single-site, `FlushInterval=00:00:01`, run-scoped prefix): block from a
 page row (dropdown) moves the URL to the blocked list and answers 410 with no new tracked row; Add rule with a wildcard;
 unblock makes the URL tracked again from 1; an Umbraco-owned pattern shows the server message inline; a `.css` row is blocked
-through its inline button. Cleanup unblocks every rule with the run prefix.
+through its inline button; `Edit_changes_the_pattern_and_the_status` (the old path answers 404 again, the new one the new
+status with an empty body) and `Edit_into_an_existing_rule_shows_the_message_and_keeps_both` (spec 9, `addRule` helper).
+`clickUnblock` opens the row's dropdown first, since Unblock is no longer the inline button. Cleanup unblocks every rule with
+the run prefix.
 
 **Manual checks** (spec 6, real API with a client-credentials token, `curl -k`, `FlushInterval=00:00:01`; all rules deleted
 afterwards):

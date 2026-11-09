@@ -1,6 +1,6 @@
 # Spec 9: Edit block rules
 
-Status: draft, awaiting builder check and approval (issue #11, branch `feature/11-edit-block-rules`)
+Status: implemented (issue #11, branch `feature/11-edit-block-rules`)
 Depends on: spec 6 (blocked URLs), spec 7 (documentation)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 
