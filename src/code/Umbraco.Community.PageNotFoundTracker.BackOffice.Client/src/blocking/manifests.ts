@@ -12,6 +12,7 @@ import {
   PNFT_BLOCK_RULES_DASHBOARD_PATHNAME,
   PNFT_BLOCK_RULES_DASHBOARD_WEIGHT,
   PNFT_CREATE_BLOCK_RULE_MODAL_ALIAS,
+  PNFT_EDIT_RULE_ACTION_ALIAS,
   PNFT_UNBLOCK_ACTION_ALIAS,
 } from './constants.js';
 
@@ -24,8 +25,8 @@ const forThisCollection = [{ alias: COLLECTION_ALIAS_CONDITION, match: PNFT_BLOC
 
 /**
  * Blocking in the backoffice: the blocked URLs dashboard (second Content tab) with its collection (repository, table
- * view, pattern search, "Add rule" action), the "Block" action on tracked URL rows, the "Unblock" action on rule rows
- * and the rule modal.
+ * view, pattern search, "Add rule" action), the "Block" action on tracked URL rows, the "Edit" and "Unblock" actions on
+ * rule rows and the rule modal.
  */
 export const manifests: Array<UmbExtensionManifest> = [
   {
@@ -97,8 +98,26 @@ export const manifests: Array<UmbExtensionManifest> = [
   {
     type: 'entityAction',
     kind: 'default',
+    alias: PNFT_EDIT_RULE_ACTION_ALIAS,
+    name: 'Page Not Found Tracker Edit Block Rule Entity Action',
+    // Above unblock (weight -10): with two actions Umbraco renders the highest weight inline, so Edit is the row button
+    // and Unblock is in the "..." dropdown (which lists both).
+    weight: 0,
+    forEntityTypes: [PNFT_BLOCK_RULE_ENTITY_TYPE],
+    api: () => import('./edit-rule.action.js'),
+    meta: {
+      icon: 'icon-edit',
+      label: '#pageNotFoundTracker_editRule',
+      additionalOptions: true,
+    },
+  },
+  {
+    type: 'entityAction',
+    kind: 'default',
     alias: PNFT_UNBLOCK_ACTION_ALIAS,
     name: 'Page Not Found Tracker Unblock Entity Action',
+    // Below edit (weight 0): reached through the row's "..." dropdown.
+    weight: -10,
     forEntityTypes: [PNFT_BLOCK_RULE_ENTITY_TYPE],
     api: () => import('./unblock.action.js'),
     meta: {

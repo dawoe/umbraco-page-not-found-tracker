@@ -31,6 +31,7 @@ const MARKS = {
 
 const BLOCK_ACTION = 'entity-action:Pnft.EntityAction.TrackedUrl.Block';
 const UNBLOCK_ACTION = 'entity-action:Pnft.EntityAction.BlockRule.Unblock';
+const EDIT_ACTION = 'entity-action:Pnft.EntityAction.BlockRule.Edit';
 const ADD_RULE_ACTION = 'collection-action:Pnft.CollectionAction.BlockRule.Add';
 const DASHBOARD_PATH = '/umbraco/section/content/dashboard/page-not-found-tracker';
 const BLOCKED_PATH = '/umbraco/section/content/dashboard/blocked-urls';
@@ -116,6 +117,15 @@ async function clickBlock(row: Locator): Promise<void> {
   await row.getByTestId(BLOCK_ACTION).first().click();
 }
 
+/** Opens the rule row's actions dropdown and clicks Unblock (Edit is the inline button, Unblock sits in the dropdown). */
+async function clickUnblock(row: Locator): Promise<void> {
+  const dropdown = row.locator('umb-entity-actions-dropdown uui-button');
+  if ((await dropdown.count()) > 0) {
+    await dropdown.first().click();
+  }
+  await row.getByTestId(UNBLOCK_ACTION).click();
+}
+
 /** Removes every rule whose pattern contains `term`, through the UI (Umbraco's confirm modal). */
 async function unblockAllMatching(page: Page, term: string): Promise<void> {
   await openBlockedAndSearch(page, term);
@@ -129,7 +139,7 @@ async function unblockAllMatching(page: Page, term: string): Promise<void> {
       return;
     }
     const id = await row.getAttribute('data-unique');
-    await row.getByTestId(UNBLOCK_ACTION).click();
+    await clickUnblock(row);
     await page.locator('umb-confirm-modal #confirm').click();
     await expect(page.locator('umb-confirm-modal')).toBeHidden();
     // Wait for the reload to drop this rule before looking at the list again.
@@ -285,7 +295,71 @@ test.describe('blocked URLs', () => {
 
     await unblockAllMatching(page, `${prefix}-style`);
   });
+
+  test('Edit_changes_the_pattern_and_the_status', async ({ page }) => {
+    const oldPattern = `/${prefix}-edit-old`;
+    const newPattern = `/${prefix}-edit-new/*`;
+    await addRule(page, oldPattern);
+    expect((await statusOf(page, oldPattern)).status).toBe(410);
+
+    await openBlockedAndSearch(page, `${prefix}-edit`);
+    await ruleRowFor(page, oldPattern).getByTestId(EDIT_ACTION).click();
+
+    // The modal starts with the rule's values.
+    await expect(page.getByTestId(MARKS.blockModal)).toBeVisible();
+    await expect(page.getByTestId(MARKS.blockPattern).locator('input')).toHaveValue(oldPattern);
+    await expect(page.getByTestId(MARKS.blockStatus).locator('select')).toHaveValue('410');
+
+    await page.getByTestId(MARKS.blockPattern).locator('input').fill(newPattern);
+    await page.getByTestId(MARKS.blockStatus).locator('select').selectOption('403');
+    await page.getByTestId(MARKS.blockConfirm).click();
+    await expect(page.getByTestId(MARKS.blockModal)).toBeHidden();
+
+    // One rule, now with the new pattern.
+    expect(await openBlockedAndSearch(page, `${prefix}-edit`)).toEqual([newPattern]);
+
+    // The old path is a normal missing page again, the new one answers 403 with an empty body.
+    expect((await statusOf(page, oldPattern)).status).toBe(404);
+    expect(await statusOf(page, `/${prefix}-edit-new/x`)).toEqual({ status: 403, body: '' });
+
+    await unblockAllMatching(page, `${prefix}-edit`);
+  });
+
+  test('Edit_into_an_existing_rule_shows_the_message_and_keeps_both', async ({ page }) => {
+    const patternA = `/${prefix}-dup-a`;
+    const patternB = `/${prefix}-dup-b`;
+    await addRule(page, patternA);
+    await addRule(page, patternB);
+
+    await openBlockedAndSearch(page, `${prefix}-dup`);
+    await ruleRowFor(page, patternB).getByTestId(EDIT_ACTION).click();
+    await fillRuleModal(page, patternA);
+    await page.getByTestId(MARKS.blockConfirm).click();
+
+    await expect(page.getByTestId(MARKS.blockError)).toBeVisible();
+    await expect(page.getByTestId(MARKS.blockError)).toContainText('already exists');
+    await expect(page.getByTestId(MARKS.blockModal)).toBeVisible();
+
+    await page.getByTestId(MARKS.blockCancel).click();
+    await expect(page.getByTestId(MARKS.blockModal)).toBeHidden();
+
+    // Both rules are unchanged.
+    const patterns = await openBlockedAndSearch(page, `${prefix}-dup`);
+    expect(patterns.sort()).toEqual([patternA, patternB].sort());
+
+    await unblockAllMatching(page, `${prefix}-dup`);
+  });
 });
+
+/** Adds a rule with the default scope and status (410) through the "Add rule" action. */
+async function addRule(page: Page, pattern: string): Promise<void> {
+  await page.goto(BLOCKED_PATH);
+  await expect(page.getByTestId(MARKS.blockCollection)).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId(ADD_RULE_ACTION).click();
+  await fillRuleModal(page, pattern);
+  await page.getByTestId(MARKS.blockConfirm).click();
+  await expect(page.getByTestId(MARKS.blockModal)).toBeHidden();
+}
 
 /** The modal opened from a row starts with the row's relative path; checks it and keeps the defaults. */
 async function fillRuleModalDefaults(page: Page, expectedPattern: string): Promise<void> {

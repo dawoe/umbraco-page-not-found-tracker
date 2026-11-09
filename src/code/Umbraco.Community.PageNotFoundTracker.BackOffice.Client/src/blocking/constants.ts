@@ -34,6 +34,9 @@ export const PNFT_BLOCK_ACTION_ALIAS = 'Pnft.EntityAction.TrackedUrl.Block';
 /** The alias of the unblock action on block rule rows. */
 export const PNFT_UNBLOCK_ACTION_ALIAS = 'Pnft.EntityAction.BlockRule.Unblock';
 
+/** The alias of the edit action on block rule rows. */
+export const PNFT_EDIT_RULE_ACTION_ALIAS = 'Pnft.EntityAction.BlockRule.Edit';
+
 /** The alias of the "Add rule" collection action. */
 export const PNFT_ADD_BLOCK_RULE_ACTION_ALIAS = 'Pnft.CollectionAction.BlockRule.Add';
 

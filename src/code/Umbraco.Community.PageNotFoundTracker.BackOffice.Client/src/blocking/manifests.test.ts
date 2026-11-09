@@ -6,6 +6,7 @@ import {
   PNFT_BLOCK_RULE_COLLECTION_ALIAS,
   PNFT_BLOCK_RULE_ENTITY_TYPE,
   PNFT_BLOCK_RULES_DASHBOARD_ALIAS,
+  PNFT_EDIT_RULE_ACTION_ALIAS,
   PNFT_UNBLOCK_ACTION_ALIAS,
 } from './constants.js';
 import { manifests } from './manifests.js';
@@ -44,6 +45,18 @@ describe('blocking manifests', () => {
     expect(PNFT_BLOCK_RULE_ENTITY_TYPE).toBe('page-not-found-tracker-block-rule');
     expect(unblock?.type).toBe('entityAction');
     expect(unblock?.forEntityTypes).toStrictEqual([PNFT_BLOCK_RULE_ENTITY_TYPE]);
+  });
+
+  it('edit is the button and unblock is in the menu on rule rows', () => {
+    const edit = byAlias(PNFT_EDIT_RULE_ACTION_ALIAS);
+    const unblock = byAlias(PNFT_UNBLOCK_ACTION_ALIAS);
+
+    expect(PNFT_EDIT_RULE_ACTION_ALIAS).toBe('Pnft.EntityAction.BlockRule.Edit');
+    expect(edit?.type).toBe('entityAction');
+    expect(edit?.forEntityTypes).toStrictEqual([PNFT_BLOCK_RULE_ENTITY_TYPE]);
+    expect(edit?.meta?.icon).toBe('icon-edit');
+    expect(edit?.weight).toBe(0);
+    expect(unblock?.weight).toBe(-10);
   });
 
   it('the add rule action is a collection action of the block rule collection only', () => {
