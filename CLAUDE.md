@@ -1061,7 +1061,7 @@ OpenAPI document; 401 anonymous, 403 outside the groups, 503 when persistence is
 |---|---|---|
 | `GetBlockRules` | `GET block-rules` | 200 `PagedViewModel<BlockRuleResponseModel>` (`id`, `pattern` = `DisplayPattern`, `statusCode`, `domain`, `culture`, `created` UTC); 400; 503. Query as `GetTrackedUrls` (`skip`, `take` 1 to 100, `search`, `domain`/`noDomain`, `culture`/`noCulture`), `orderBy` `Created` (default), `Pattern`, `StatusCode`, `Domain`, `Culture`, `direction` default `Descending` |
 | `CreateBlockRule` | `POST block-rules` | body `{ pattern, statusCode, domain?, culture? }` (null domain/culture = all); 200 `{ recordsRemoved, message }`; 400 (blank pattern, malformed body, or the validator's message as problem `detail`); 503 |
-| `UpdateBlockRule` | `PUT block-rules/{id:int}` | `UpdateBlockRuleController`; body as `CreateBlockRule` (`CreateBlockRuleRequestModel`); 200 `{ recordsRemoved, message }` (`CreateBlockRuleResponseModel`); 400 (blank pattern or the validator's message as `detail`); 404 problem "Block rule not found"; 409 problem "Block rule exists" with `RuleExistsMessage` as `detail`; 503 |
+| `UpdateBlockRule` | `PUT block-rules/{id:int}` | `UpdateBlockRuleController`; body as `CreateBlockRule` (`CreateBlockRuleRequestModel`); 200 `{ recordsRemoved, message }` (`CreateBlockRuleResponseModel`); 400 (blank pattern, malformed body, or the validator's message as `detail`); 404 problem "Block rule not found"; 409 problem "Block rule exists" with `RuleExistsMessage` as `detail`; 503 |
 | `DeleteBlockRule` | `DELETE block-rules/{id:int}` | 200 empty; 404 problem; 503 |
 | `GetBlockScopeOptions` | `GET block-rules/scope-options` | 200 `{ domains, cultures }` (configured in Umbraco, not from the rules); 503 |
 
@@ -1081,8 +1081,8 @@ actions; defaults: the row's relative path with any `?query` dropped, the row's 
 `umb-entity-actions-dropdown`; Umbraco's confirm modal `umb-confirm-modal`, buttons `#confirm`/`#cancel`; a 404 shows
 the client's own text). Modal `Pnft.Modal.CreateBlockRule` (sidebar, small; `rule-modal.element.ts`): pattern required
 (placeholder `/wp-admin/*`), domain and culture selects from `GetBlockScopeOptions` plus the preselected value, status
-403/404/410, a static warning, the 400 `detail` inline, Confirm disabled while sending; `open-rule-modal.ts` (shared by
-Block and Add rule) captures the notification context and localization first, reloads the collection and shows a success
+403/404/410 (plus a current code outside them in edit mode, see `buildStatusChoices` below), a static warning, the 400
+`detail` inline, Confirm disabled while sending; `open-rule-modal.ts` (shared by Block, Add rule and Edit) captures the notification context and localization first, reloads the collection and shows a success
 toast, or a warning toast with the server message when `recordsRemoved` is false. Edit mode is keyed on
 `PnftBlockRuleModalData.ruleId`: the modal is prefilled with the rule, Confirm reads `#pageNotFoundTracker_saveRule`
 ("Save") and sends `updateRule(send, id, request)` (`block-rule.service.ts`, `PnftUpdateRuleSend`, wrapping the generated
@@ -1101,7 +1101,7 @@ token would bind to the other collection). Texts: `pageNotFoundTracker_*` in `lo
 filters, states, modal fields and buttons, `pnft-block-sort-<column>`); `tests/blocked.spec.ts` keeps a copy in its `MARKS`
 constant: change both together. Umbraco's own: `entity-action:Pnft.EntityAction.TrackedUrl.Block`,
 `entity-action:Pnft.EntityAction.BlockRule.Edit`, `entity-action:Pnft.EntityAction.BlockRule.Unblock`, `collection-action:Pnft.CollectionAction.BlockRule.Add`. Select option
-values `all`, `empty`, `v:<value>`; status values `403`, `404`, `410`.
+values `all`, `empty`, `v:<value>`; status values `403`, `404`, `410`, plus a rule's current code outside them in edit mode (`buildStatusChoices`).
 
 **Tests.** Unit (Infrastructure.Tests `Blocking/`): `BlockPatternNormalizerTests`, `CompiledBlockPatternTests`,
 `BlockPatternValidatorTests`, `BlockLikePatternTests` (incl. the SQLite parity test), `BlockSnapshotTests` (precedence table,
@@ -1144,6 +1144,15 @@ afterwards):
   (exact) and kept `/pnft-sqlx`; the table held `/pnft-sql/*` with `DisplayPattern` `/PNFT-SQL/*` and a 64-character hash; the
   paths answered 410; re-adding as `/pnft-sql/*/` updated the same rule to 403; unblocking restored 404 and tracking from 1.
 - Not checked: `multi-site-hostnames` (needs the hosts file).
+- Spec 9 (editing), multi-site-aliases (2026-11-09): an all-domains `/pnft-manual-edit/*` (410) answered 410 with an empty
+  body on `/siteA/pnft-manual-edit/x` and `/siteB/pnft-manual-edit/x`. `PUT block-rules/{id}` to domain
+  `localhost:44402/sitea`, culture `en-US`, status 403 answered 200 `{ recordsRemoved: true }`; the list showed the same id
+  and `created` with the new status and scope; Site A then answered 403 with an empty body, Site B the 404 page (404, 16256
+  bytes) and was tracked again (`/siteB/pnft-manual-edit/x`, count 1). With a second rule `/pnft-manual-other` (410, all
+  scopes), a `PUT` of the first rule to that pattern and scope answered 409 with the detail "A rule with this pattern, domain
+  and culture already exists." and both rules stayed unchanged. A `PUT` to id 999999 answered 404. Both rules were deleted
+  (200 each); `/siteA/pnft-manual-edit/x` answered 404 with the 404 page again. Not checked: `multi-site-hostnames`,
+  `sql-server`.
 
 **Not verified:** the modal's visual layout (it renders off-screen in the automation pane; fields and messages were driven
 through the DOM), the `recordsRemoved: false` warning toast, the unblock 404/503/network texts (Vitest mapping only), the
