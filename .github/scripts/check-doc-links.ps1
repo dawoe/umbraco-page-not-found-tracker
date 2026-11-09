@@ -2,7 +2,7 @@
 .SYNOPSIS
     Checks the relative links and anchors in the documentation.
 .DESCRIPTION
-    Checks every [text](target) in docs/**/*.md (docs/superpowers is internal and skipped), README.md and
+    Also fails when a page of docs/ cannot be reached from docs/README.md. Checks every [text](target) in docs/**/*.md (docs/superpowers is internal and skipped), README.md and
     src/assets/readme.md. A relative target must exist, compared case-sensitively (a link that works on Windows
     must also work on Linux). A #anchor must match a heading of the target page, using GitHub's slug rules
     (duplicates get -1, -2, ...). http(s) and mailto links are skipped: external sites are flaky.
@@ -17,6 +17,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $failures = [System.Collections.Generic.List[string]]::new()
 $slugCache = @{}
+$edges = @{}
 
 function Get-Lines {
     param([string] $Path)
@@ -115,11 +116,35 @@ foreach ($file in $files) {
                 }
             }
 
+            if ($resolved -like '*.md' -and (Test-Path $resolved -PathType Leaf)) {
+                if (-not $edges.ContainsKey($file.FullName)) { $edges[$file.FullName] = [System.Collections.Generic.List[string]]::new() }
+                $edges[$file.FullName].Add($resolved)
+            }
+
             if ($anchor -and $resolved -like '*.md' -and (Test-Path $resolved -PathType Leaf)) {
                 if (-not (Get-Slugs $resolved).Contains($anchor)) {
                     $failures.Add("${relative}:$($line.Number): anchor not found: $target")
                 }
             }
+        }
+    }
+}
+
+# Every page of docs/ must be reachable from the index, directly or through another page.
+$index = Join-Path $docs 'README.md'
+if (Test-Path $index) {
+    $reached = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $queue = [System.Collections.Generic.Queue[string]]::new()
+    $queue.Enqueue((Get-Item $index).FullName)
+    while ($queue.Count -gt 0) {
+        $current = $queue.Dequeue()
+        if (-not $reached.Add($current)) { continue }
+        if ($edges.ContainsKey($current)) { foreach ($next in $edges[$current]) { $queue.Enqueue($next) } }
+    }
+
+    foreach ($page in $files | Where-Object { $_.FullName.StartsWith($docs) }) {
+        if (-not $reached.Contains($page.FullName)) {
+            $failures.Add("$([IO.Path]::GetRelativePath($RepoRoot, $page.FullName).Replace([string][char]92, '/')): not linked from docs/README.md (directly or through another page)")
         }
     }
 }

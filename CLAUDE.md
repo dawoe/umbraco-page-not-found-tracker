@@ -14,7 +14,9 @@ URLs in the Content section, served by the package's own Management API) and red
 "Create redirect" row action that creates a redirect and removes the tracked URL; replaceable provider and form) and
 blocked URLs (spec 6: wildcard block rules with a status code and a domain/culture scope, answered before Umbraco with an
 empty body, never tracked; a "Block" row action and a second "Blocked URLs" dashboard tab).
-Implementer documentation (spec 7) is planned, not built. Do not document or promise it as existing.
+Implementer documentation (spec 7: the public `docs/` set, compiled samples and three CI checks) is built; see
+Documentation (spec 7) below. **A change to a setting, a contract, an extension point or documented behaviour must
+update the docs (and the quoted samples) in the same change.**
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
 
@@ -24,7 +26,7 @@ Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spe
 4. Backoffice dashboard: `docs/superpowers/specs/2026-11-01-dashboard-design.md` (done)
 5. Redirect creation: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md` (done)
 6. Blocked URLs: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md` (done)
-7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md`
+7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md` (done)
 
 Plans (`docs/superpowers/plans/`):
 
@@ -34,6 +36,7 @@ Plans (`docs/superpowers/plans/`):
 - Dashboard: `docs/superpowers/plans/2026-11-03-dashboard.md`
 - Redirect creation: `docs/superpowers/plans/2026-11-04-redirect-creation.md`
 - Blocked URLs: `docs/superpowers/plans/2026-11-04-blocked-urls.md`
+- Documentation: `docs/superpowers/plans/2026-11-09-documentation.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -78,8 +81,14 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
 - `scripts/` — `add-migration.ps1` and `check-pending-model-changes.ps1` (tracking migrations);
   `.config/dotnet-tools.json` pins `dotnet-ef` 10.0.12 (the scripts run `dotnet tool restore`)
 - `src/assets/` — NuGet readme (`readme.md`) and icon (`logo.png`)
+- `docs/` — the public documentation (spec 7), `docs/extending/` for the extension points; `docs/superpowers/` holds the
+  internal specs and plans and is not public documentation
+- `src/samples/Umbraco.Community.PageNotFoundTracker.Samples/` — compiled C# samples quoted by `docs/extending`
+  (`IsPackable=false`, in the solution, not referenced by the test site); the TypeScript samples are in the client's
+  `samples/` folder, type-checked only (`npm run check-samples`), never bundled
 - `.github/workflows/` — `pr-validation.yml`, `beta-release.yml`, `release.yml`;
-  `.github/scripts/check-package.ps1` asserts the packed nupkg is complete
+  `.github/scripts/check-package.ps1` asserts the packed nupkg is complete; `check-doc-samples.ps1` and
+  `check-doc-links.ps1` check the docs (each has a self-test in `.github/scripts/tests/`)
 - `.mcp.json` and `.vscode/mcp.json` — Umbraco MCP servers, one per launch profile
 - `nuget.config` — nuget.org only (`<clear />`), so user-level feeds do not trigger NU1507 with
   central package management; CI uses nuget.org anyway
@@ -122,6 +131,15 @@ npm run test:e2e
 ```
 
 Expected: zero analyzer warnings from `dotnet build`.
+
+Documentation checks (from the repo root; CI runs the first two in `pr-validation.yml`, the third is a unit test):
+
+```bash
+pwsh .github/scripts/check-doc-samples.ps1     # every csharp/typescript block in docs/ matches its compiled sample
+pwsh .github/scripts/check-doc-links.ps1       # relative links, anchors, every page reachable from docs/README.md
+dotnet test src/test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests --filter ConfigurationDocsTests
+(cd src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client && npm run check-samples)   # TypeScript samples
+```
 
 Packing facts:
 
@@ -1087,6 +1105,38 @@ afterwards):
 **Not verified:** the modal's visual layout (it renders off-screen in the automation pane; fields and messages were driven
 through the DOM), the `recordsRemoved: false` warning toast, the unblock 404/503/network texts (Vitest mapping only), the
 hostnames profile, and the upsert's duplicate-key retry (no seam to inject the race; untested).
+
+## Documentation (spec 7)
+
+Spec: `docs/superpowers/specs/2026-11-01-documentation-design.md`; plan `docs/superpowers/plans/2026-11-09-documentation.md`.
+The public pages are markdown in `docs/` (index `docs/README.md`, extension points in `docs/extending/`), written from the
+shipped code, not from the specs. **One page owns each fact**; other pages link to it (settings: `configuration.md`,
+precedence of blocking, redirects and the 404 page: `how-it-works.md`, pattern syntax: `blocking.md`). Public pages never
+link to or quote `CLAUDE.md` or `docs/superpowers/`.
+
+**Keeping it correct.** A change to a setting, a contract, an extension point or behaviour that a page describes updates
+the page (and the sample it quotes) in the same change. Three checks fail the build otherwise:
+
+- **Quoted samples.** A `csharp` or `typescript` block in a page is preceded by `<!-- sample: <repo path>#<id> -->` and
+  must equal the region between `docs:begin <id>` and `docs:end <id>` comment lines in that file (blank edge lines,
+  indentation and CRLF are ignored; `check-doc-samples.ps1`). Samples live in `src/samples/...Samples` (C#, built with the
+  solution, one type per file, StyleCop-clean like the rest), in the client's `samples/` (TypeScript, `npm run
+  check-samples`, outside the Vite build so nothing reaches the shipped bundle) and, for the `Program.cs` snippet of
+  `getting-started.md`, in `test-sites/Website-V17/Program.cs`. To change an example, edit the sample, then the quoting
+  page. `bash`, `json` and untagged blocks are not checked.
+- **Settings.** `ConfigurationDocsTests` (Infrastructure.Tests) fails when a public setting of `PageNotFoundTrackerSettings`
+  is not written as `` `Name` `` in `docs/configuration.md`, and when the first `json` block there does not bind to the
+  settings class (its values are asserted, change both together).
+- **Links.** `check-doc-links.ps1` checks relative links and anchors (case-sensitive, GitHub slugs) in `docs/`, `README.md`
+  and `src/assets/readme.md`, and that every page is reachable from `docs/README.md`. External links are not checked. The
+  NuGet readme uses absolute GitHub URLs, because nuget.org cannot resolve relative ones.
+
+Facts the pages state that came from checking the running test site (not only the code): the 404, file 404 and tracked
+rows of the four scenarios (`multi-site-and-language.md`), block and redirect behaviour on `multi-site-aliases`
+(`blocking.md`, `redirects.md`), and the troubleshooting causes (wrong alias, tracking off, alias in a block pattern).
+Entity type strings (`page-not-found-tracker-url`, `-block-rule`) are public: `src/entity.test.ts` pins them because the
+row action sample writes them as literals. Dashboards have no screenshots (optional; the Browser pane renders the dialogs
+off-screen). Not built: a docs site, a generated API reference, translations.
 
 ## Tests
 

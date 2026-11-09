@@ -44,6 +44,8 @@ Invoke-Case 'external and mailto links skipped' @{ 'docs/a.md' = "# A`n[x](https
 Invoke-Case 'link inside fenced code ignored' @{ 'docs/a.md' = "# A`n${b}md`n[x](nope.md)`n${b}`n" } 0
 Invoke-Case 'link inside inline code ignored' @{ 'docs/a.md' = "# A`n``[x](nope.md)``" } 0
 Invoke-Case 'root README and nuget readme are checked' @{ 'README.md' = "# R`n[d](docs/nope.md)`n"; 'docs/a.md' = "# A`n" } 1 'README.md'
+Invoke-Case 'page not linked from the index fails' @{ 'docs/README.md' = "# Index`n[a](a.md)`n"; 'docs/a.md' = "# A`n"; 'docs/orphan.md' = "# O`n" } 1 'not linked from docs/README.md'
+Invoke-Case 'page linked through a sub-index passes' @{ 'docs/README.md' = "# Index`n[e](extending/README.md)`n"; 'docs/extending/README.md' = "# E`n[x](x.md)`n"; 'docs/extending/x.md' = "# X`n" } 0
 Invoke-Case 'superpowers folder not checked' @{ 'docs/superpowers/s.md' = "[x](nope.md)`n"; 'docs/a.md' = "# A`n" } 0
 
 if ($failures -gt 0) { Write-Host "$failures case(s) failed"; exit 1 }

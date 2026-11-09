@@ -7,7 +7,7 @@
     "SyncContributorsFromRepository": true
   },
   "Category": "Developer Tools",
-  "DocumentationUrl": "https://github.com/dawoe/umbraco-page-not-found-tracker",
+  "DocumentationUrl": "https://github.com/dawoe/umbraco-page-not-found-tracker/blob/develop/docs/README.md",
   "LicenseTypes": [ "Free" ],
   "IssueTrackerUrl": "https://github.com/dawoe/umbraco-page-not-found-tracker/issues",
   "PackageType": "Package",

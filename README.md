@@ -1,28 +1,29 @@
 # Umbraco Page Not Found Tracker
 
-An Umbraco package that records requests that end in a 404 and, in later versions, lets editors
-turn tracked URLs into redirects or block them.
+An Umbraco package that records the requests on your site that end in a 404, shows your own 404 page for
+missing pages and files, and lets editors turn the tracked URLs into redirects or block them.
 
-> **Status: in development.** This version shows the configured 404 page for missing pages and
-> files, and records every 404 URL with a hit count in the Umbraco database (SQLite or SQL Server).
-> There is no screen to view the tracked URLs yet (the backoffice dashboard is a placeholder), and
-> nothing is redirected or blocked. The planned features are described in the specs in
-> [`docs/superpowers/specs/`](docs/superpowers/specs/).
-
-Supports **Umbraco 17 only** (.NET 10).
+Supports **Umbraco 17 only** (.NET 10), with SQLite or SQL Server as the Umbraco database.
 
 ## Features
 
-- 404 handling for pages and files that belongs to the right site and language (spec 2)
-- Tracking of the URLs that visitors request but do not exist (spec 3): one row per URL, domain and
-  culture in the table `pageNotFoundTrackerUrl`, written in batches by a background service
+- **404 handling** for pages and files, in the right site and language.
+- **Tracking** of every URL that visitors request but does not exist: one row per URL, domain and culture with a hit
+  count, written in batches by a background service.
+- **A backoffice dashboard** in the Content section to search, sort, filter and page through the tracked URLs.
+- **Redirects**: turn a tracked URL into an Umbraco redirect with one action.
+- **Blocking**: answer scanner noise such as `/wp-admin/*` at once with a 403, 404 or 410, without tracking it.
+- **Extension points** to replace the 404 page resolver, the redirect backend and form, the database provider and the
+  dashboard row actions.
 
-## Planned features
+## Documentation
 
-- A backoffice dashboard to browse tracked URLs (spec 4)
-- Creating redirects from tracked URLs (spec 5)
-- Blocking noisy URLs, such as scanner requests (spec 6)
-- Documentation for implementers (spec 7)
+The documentation is in [`docs/`](docs/README.md):
+
+- [Getting started](docs/getting-started.md) and [Configuration](docs/configuration.md) to install and configure it.
+- [The dashboards](docs/dashboards.md) for editors.
+- [Extending the package](docs/extending/README.md) for developers.
+- [Troubleshooting](docs/troubleshooting.md).
 
 ## Installation
 
@@ -30,75 +31,8 @@ Supports **Umbraco 17 only** (.NET 10).
 dotnet add package Umbraco.Community.PageNotFoundTracker
 ```
 
-Then call `UsePageNotFoundTracker()` in `Program.cs`, after `BootUmbracoAsync()` and before
-`UseUmbraco()`:
-
-```csharp
-using Umbraco.Community.PageNotFoundTracker.Extensions;
-
-WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-
-builder.CreateUmbracoBuilder()
-    .AddBackOffice()
-    .AddWebsite()
-    .AddComposers()
-    .Build();
-
-WebApplication app = builder.Build();
-
-await app.BootUmbracoAsync();
-
-app.UsePageNotFoundTracker();
-
-app.UseUmbraco()
-    .WithMiddleware(u =>
-    {
-        u.UseBackOffice();
-        u.UseWebsite();
-    })
-    .WithEndpoints(u =>
-    {
-        u.UseBackOfficeEndpoints();
-        u.UseWebsiteEndpoints();
-    });
-
-await app.RunAsync();
-```
-
-The package registers itself through an Umbraco composer, so no other setup is needed. On first start
-it creates its tables in the Umbraco database (SQLite or SQL Server; other databases leave tracking off
-with an error in the log, and the site keeps working).
-
-## Settings
-
-All settings are optional and live under `Umbraco:Community:PageNotFoundTracker` in `appsettings.json`.
-They are read at startup; changing them needs a restart.
-
-```json
-{
-  "Umbraco": {
-    "Community": {
-      "PageNotFoundTracker": {
-        "NotFoundPageDocumentTypeAlias": "error",
-        "TrackingEnabled": true,
-        "FlushInterval": "00:01:00",
-        "IncludeQueryString": false,
-        "ChannelCapacity": 10000
-      }
-    }
-  }
-}
-```
-
-| Setting | Default | Meaning |
-|---|---|---|
-| `NotFoundPageDocumentTypeAlias` | empty | Document type alias of the 404 page, looked up under the site root of the request. Empty: Umbraco's own 404 behaviour. |
-| `TrackingEnabled` | `true` | Record 404 URLs. |
-| `FlushInterval` | `00:01:00` | How often recorded 404s are written to the database (minimum one second). |
-| `IncludeQueryString` | `false` | Treat URLs that differ only in their query string as different URLs. |
-| `ChannelCapacity` | `10000` | Maximum number of 404s held in memory between writes; beyond it new ones are dropped with a warning in the log. |
-
-URLs are compared ignoring case, a trailing slash and repeated slashes.
+Then call `UsePageNotFoundTracker()` in `Program.cs`, after `BootUmbracoAsync()` and before `UseUmbraco()`. The package
+creates its tables on first start. See [Getting started](docs/getting-started.md) for the full steps.
 
 ## Contributing
 
