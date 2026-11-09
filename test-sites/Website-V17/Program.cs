@@ -10,6 +10,7 @@ builder.CreateUmbracoBuilder()
 
 WebApplication app = builder.Build();
 
+// docs:begin program-pipeline
 await app.BootUmbracoAsync();
 
 app.UsePageNotFoundTracker();
@@ -25,5 +26,7 @@ app.UseUmbraco()
         u.UseBackOfficeEndpoints();
         u.UseWebsiteEndpoints();
     });
+
+// docs:end program-pipeline
 
 await app.RunAsync();
