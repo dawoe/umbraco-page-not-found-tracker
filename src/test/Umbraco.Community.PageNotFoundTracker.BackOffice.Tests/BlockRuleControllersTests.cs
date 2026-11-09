@@ -139,6 +139,7 @@ internal sealed class BlockRuleControllersTests
             await this.ListController().GetBlockRules(CancellationToken.None),
             await new CreateBlockRuleController(this.service.Object, this.state.Object).CreateBlockRule(request, CancellationToken.None),
             await new DeleteBlockRuleController(this.service.Object, this.state.Object).DeleteBlockRule(1, CancellationToken.None),
+            await this.UpdateController().UpdateBlockRule(1, new CreateBlockRuleRequestModel { Pattern = "/a", StatusCode = 410 }, CancellationToken.None),
             await new GetBlockScopeOptionsController(this.service.Object, this.state.Object).GetBlockScopeOptions(CancellationToken.None),
         ];
 
@@ -247,6 +248,120 @@ internal sealed class BlockRuleControllersTests
     }
 
     /// <summary>
+    /// Saved answers 200 with the outcome and passes the id and values through unchanged.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_Saved_Returns200()
+    {
+        this.service
+            .Setup(s => s.UpdateAsync(5, "/wp-*", 410, "d", "en-us", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreateBlockRuleOutcome(CreateBlockRuleStatus.Saved, null, true));
+
+        IActionResult result = await this.UpdateController().UpdateBlockRule(
+            5,
+            new CreateBlockRuleRequestModel { Pattern = "/wp-*", StatusCode = 410, Domain = "d", Culture = "en-us" },
+            CancellationToken.None);
+
+        var model = (CreateBlockRuleResponseModel)((OkObjectResult)result).Value!;
+        Assert.Multiple(() =>
+        {
+            Assert.That(model.RecordsRemoved, Is.True);
+            Assert.That(model.Message, Is.Null);
+        });
+    }
+
+    /// <summary>
+    /// A missing domain and culture reach the service as empty strings.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_NullScope_PassesEmptyStrings()
+    {
+        this.SetupUpdate(new CreateBlockRuleOutcome(CreateBlockRuleStatus.Saved, null, true));
+
+        await this.UpdateController().UpdateBlockRule(5, new CreateBlockRuleRequestModel { Pattern = "/a*", StatusCode = 404 }, CancellationToken.None);
+
+        this.service.Verify(s => s.UpdateAsync(5, "/a*", 404, string.Empty, string.Empty, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// An invalid outcome is a 400 with the service's message as detail.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_Invalid_Returns400WithDetail()
+    {
+        this.SetupUpdate(new CreateBlockRuleOutcome(CreateBlockRuleStatus.Invalid, "too broad", false));
+
+        IActionResult result = await this.UpdateController().UpdateBlockRule(5, new CreateBlockRuleRequestModel { Pattern = "/*", StatusCode = 410 }, CancellationToken.None);
+
+        var bad = (BadRequestObjectResult)result;
+        Assert.That(((ProblemDetails)bad.Value!).Detail, Is.EqualTo("too broad"));
+    }
+
+    /// <summary>
+    /// An unknown rule is a 404.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_NotFound_Returns404()
+    {
+        this.SetupUpdate(new CreateBlockRuleOutcome(CreateBlockRuleStatus.NotFound, null, false));
+
+        IActionResult result = await this.UpdateController().UpdateBlockRule(5, new CreateBlockRuleRequestModel { Pattern = "/a", StatusCode = 410 }, CancellationToken.None);
+
+        var objectResult = (ObjectResult)result;
+        Assert.Multiple(() =>
+        {
+            Assert.That(objectResult.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+            Assert.That(((ProblemDetails)objectResult.Value!).Title, Is.EqualTo("Block rule not found"));
+        });
+    }
+
+    /// <summary>
+    /// A conflicting identity is a 409 with the message as detail.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_Conflict_Returns409WithDetail()
+    {
+        this.SetupUpdate(new CreateBlockRuleOutcome(CreateBlockRuleStatus.Conflict, BlockingConstants.RuleExistsMessage, false));
+
+        IActionResult result = await this.UpdateController().UpdateBlockRule(5, new CreateBlockRuleRequestModel { Pattern = "/a", StatusCode = 410 }, CancellationToken.None);
+
+        var objectResult = (ObjectResult)result;
+        Assert.Multiple(() =>
+        {
+            Assert.That(objectResult.StatusCode, Is.EqualTo(StatusCodes.Status409Conflict));
+            Assert.That(((ProblemDetails)objectResult.Value!).Detail, Is.EqualTo(BlockingConstants.RuleExistsMessage));
+        });
+    }
+
+    /// <summary>
+    /// A null body or a blank pattern is a 400 and never reaches the service.
+    /// </summary>
+    /// <param name="pattern">The pattern.</param>
+    /// <returns>A task.</returns>
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("   ")]
+    public async Task Update_BlankPattern_Returns400(string? pattern)
+    {
+        IActionResult blank = await this.UpdateController().UpdateBlockRule(5, new CreateBlockRuleRequestModel { Pattern = pattern, StatusCode = 410 }, CancellationToken.None);
+        IActionResult noBody = await this.UpdateController().UpdateBlockRule(5, null, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(blank, Is.TypeOf<BadRequestObjectResult>());
+            Assert.That(noBody, Is.TypeOf<BadRequestObjectResult>());
+        });
+        this.service.Verify(
+            s => s.UpdateAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>
     /// Deleting an existing rule answers 200, an unknown one 404.
     /// </summary>
     /// <returns>A task.</returns>
@@ -291,4 +406,11 @@ internal sealed class BlockRuleControllersTests
     private GetBlockRulesController ListController() => new(this.service.Object, this.state.Object);
 
     private CreateBlockRuleController CreateController() => new(this.service.Object, this.state.Object);
+
+    private UpdateBlockRuleController UpdateController() => new(this.service.Object, this.state.Object);
+
+    private void SetupUpdate(CreateBlockRuleOutcome outcome) =>
+        this.service
+            .Setup(s => s.UpdateAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outcome);
 }

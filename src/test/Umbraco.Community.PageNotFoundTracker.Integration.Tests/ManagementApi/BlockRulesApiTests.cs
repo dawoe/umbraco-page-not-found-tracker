@@ -70,24 +70,26 @@ internal sealed class BlockRulesApiTests : ManagementApiTest<GetBlockRulesContro
     }
 
     /// <summary>
-    /// An anonymous caller gets 401 from delete and the scope options.
+    /// An anonymous caller gets 401 from delete, update and the scope options.
     /// </summary>
     /// <returns>A task.</returns>
     [Test]
-    public async Task Anonymous_DeleteAndScopeOptions_Return401()
+    public async Task Anonymous_DeleteUpdateAndScopeOptions_Return401()
     {
         using HttpResponseMessage delete = await this.Client.DeleteAsync(new Uri(RulesUrl + "/1", UriKind.Relative));
+        using HttpResponseMessage update = await this.PutAsync(1, "/x*", 410);
         using HttpResponseMessage options = await this.Client.GetAsync(new Uri(RulesUrl + "/scope-options", UriKind.Relative));
 
         Assert.Multiple(() =>
         {
             Assert.That(delete.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+            Assert.That(update.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
             Assert.That(options.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
         });
     }
 
     /// <summary>
-    /// A user outside the configured groups gets 403 from delete.
+    /// A user outside the configured groups gets 403 from delete and update.
     /// </summary>
     /// <returns>A task.</returns>
     [Test]
@@ -96,8 +98,13 @@ internal sealed class BlockRulesApiTests : ManagementApiTest<GetBlockRulesContro
         await this.AuthenticateWithSectionsAsync("pnftRulesOutsideDelete", Constants.Applications.Content);
 
         using HttpResponseMessage delete = await this.Client.DeleteAsync(new Uri(RulesUrl + "/1", UriKind.Relative));
+        using HttpResponseMessage update = await this.PutAsync(1, "/x*", 410);
 
-        Assert.That(delete.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+        Assert.Multiple(() =>
+        {
+            Assert.That(delete.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(update.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+        });
     }
 
     /// <summary>
@@ -212,6 +219,93 @@ internal sealed class BlockRulesApiTests : ManagementApiTest<GetBlockRulesContro
     }
 
     /// <summary>
+    /// Updating a rule changes it in place: the list shows the new values under the same id and the old pattern is gone.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_ChangesTheRule_ThenList_ShowsNewValues()
+    {
+        await this.SignInAsync("rules-update@umbraco.com");
+        using HttpResponseMessage created = await this.PostAsync("/to-edit*", 410);
+        Assert.That(created.StatusCode, Is.EqualTo(HttpStatusCode.OK), await created.Content.ReadAsStringAsync());
+        int id = await this.FindIdAsync("to-edit");
+
+        using HttpResponseMessage update = await this.PutAsync(id, "/Edited-Rule/*", 403);
+        string updateBody = await update.Content.ReadAsStringAsync();
+        using HttpResponseMessage edited = await this.Client.GetAsync(new Uri(RulesUrl + "?search=edited-rule", UriKind.Relative));
+        using HttpResponseMessage old = await this.Client.GetAsync(new Uri(RulesUrl + "?search=to-edit", UriKind.Relative));
+
+        Assert.That(update.StatusCode, Is.EqualTo(HttpStatusCode.OK), updateBody);
+        JsonNode editedJson = JsonNode.Parse(await edited.Content.ReadAsStringAsync())!;
+        JsonNode oldJson = JsonNode.Parse(await old.Content.ReadAsStringAsync())!;
+        JsonNode item = editedJson["items"]!.AsArray().Single()!;
+        Assert.Multiple(() =>
+        {
+            Assert.That(JsonNode.Parse(updateBody)!["recordsRemoved"], Is.Not.Null);
+            Assert.That(item["id"]!.GetValue<int>(), Is.EqualTo(id));
+            Assert.That(item["pattern"]!.GetValue<string>(), Is.EqualTo("/Edited-Rule/*"));
+            Assert.That(item["statusCode"]!.GetValue<int>(), Is.EqualTo(403));
+            Assert.That(oldJson["total"]!.GetValue<long>(), Is.EqualTo(0));
+        });
+    }
+
+    /// <summary>
+    /// Updating an unknown rule is a 404 with a detail.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_UnknownId_Returns404()
+    {
+        await this.SignInAsync("rules-update404@umbraco.com");
+
+        using HttpResponseMessage response = await this.PutAsync(999999, "/x", 410);
+        string body = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound), body);
+        Assert.That(JsonNode.Parse(body)!["detail"]!.GetValue<string>(), Is.Not.Empty, body);
+    }
+
+    /// <summary>
+    /// Changing a rule into the identity of another rule is a 409 with the message as detail.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_IntoExistingRule_Returns409WithDetail()
+    {
+        await this.SignInAsync("rules-update409@umbraco.com");
+        using HttpResponseMessage a = await this.PostAsync("/conflict-a", 410);
+        using HttpResponseMessage b = await this.PostAsync("/conflict-b", 410);
+        Assert.That(a.StatusCode, Is.EqualTo(HttpStatusCode.OK), await a.Content.ReadAsStringAsync());
+        Assert.That(b.StatusCode, Is.EqualTo(HttpStatusCode.OK), await b.Content.ReadAsStringAsync());
+        int idB = await this.FindIdAsync("conflict-b");
+
+        using HttpResponseMessage response = await this.PutAsync(idB, "/conflict-a", 410);
+        string body = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Conflict), body);
+        Assert.That(JsonNode.Parse(body)!["detail"]!.GetValue<string>(), Is.EqualTo("A rule with this pattern, domain and culture already exists."), body);
+    }
+
+    /// <summary>
+    /// A pattern the service rejects is a 400 with the message in <c>detail</c>.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Update_TooBroadPattern_Returns400WithDetail()
+    {
+        await this.SignInAsync("rules-update400@umbraco.com");
+        using HttpResponseMessage created = await this.PostAsync("/to-break", 410);
+        Assert.That(created.StatusCode, Is.EqualTo(HttpStatusCode.OK), await created.Content.ReadAsStringAsync());
+        int id = await this.FindIdAsync("to-break");
+
+        using HttpResponseMessage response = await this.PutAsync(id, "/*", 410);
+        string body = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest), body);
+        Assert.That(JsonNode.Parse(body)!["detail"]!.GetValue<string>(), Is.Not.Empty, body);
+    }
+
+    /// <summary>
     /// Deleting a rule answers 200, deleting it again 404.
     /// </summary>
     /// <returns>A task.</returns>
@@ -285,6 +379,19 @@ internal sealed class BlockRulesApiTests : ManagementApiTest<GetBlockRulesContro
         }
 
         await this.AuthenticateClientAsync(this.Client, email, UserPassword, Constants.Security.EditorGroupKey);
+    }
+
+    private async Task<int> FindIdAsync(string search)
+    {
+        using HttpResponseMessage list = await this.Client.GetAsync(new Uri(RulesUrl + "?search=" + search, UriKind.Relative));
+        return JsonNode.Parse(await list.Content.ReadAsStringAsync())!["items"]!.AsArray().Single()!["id"]!.GetValue<int>();
+    }
+
+    private async Task<HttpResponseMessage> PutAsync(int id, string pattern, int statusCode)
+    {
+        string json = new JsonObject { ["pattern"] = pattern, ["statusCode"] = statusCode, ["domain"] = string.Empty, ["culture"] = string.Empty }.ToJsonString();
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        return await this.Client.PutAsync(new Uri($"{RulesUrl}/{id}", UriKind.Relative), content);
     }
 
     private async Task<HttpResponseMessage> PostAsync(string pattern, int statusCode)
