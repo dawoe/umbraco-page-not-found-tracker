@@ -232,6 +232,53 @@ export type DeleteBlockRuleResponses = {
     200: unknown;
 };
 
+export type UpdateBlockRuleData = {
+    body?: CreateBlockRuleRequestModel;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/umbraco/pagenotfoundtracker/api/v1/block-rules/{id}';
+};
+
+export type UpdateBlockRuleErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Not Found
+     */
+    404: ProblemDetails;
+    /**
+     * Conflict
+     */
+    409: ProblemDetails;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type UpdateBlockRuleError = UpdateBlockRuleErrors[keyof UpdateBlockRuleErrors];
+
+export type UpdateBlockRuleResponses = {
+    /**
+     * OK
+     */
+    200: CreateBlockRuleResponseModel;
+};
+
+export type UpdateBlockRuleResponse = UpdateBlockRuleResponses[keyof UpdateBlockRuleResponses];
+
 export type GetBlockScopeOptionsData = {
     body?: never;
     path?: never;

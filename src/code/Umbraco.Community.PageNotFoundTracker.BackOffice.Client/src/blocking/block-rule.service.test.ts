@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRule, deleteRule, mapCreateRuleResponse, mapDeleteRuleResponse } from './block-rule.service.js';
+import { createRule, deleteRule, mapCreateRuleResponse, mapDeleteRuleResponse, updateRule } from './block-rule.service.js';
 
 /** An error as Umbraco's tryExecute returns it (an UmbApiError: status plus problem details). */
 function apiError(status: number, detail?: string) {
@@ -40,6 +40,13 @@ describe('mapCreateRuleResponse', () => {
 
   it('maps a 404 to not found', () => {
     expect(mapCreateRuleResponse({ error: apiError(404) })).toEqual({ kind: 'notFound' });
+  });
+
+  it('maps a 409 to conflict with the server message', () => {
+    expect(mapCreateRuleResponse({ error: apiError(409, 'A rule with this pattern, domain and culture already exists.') })).toEqual({
+      kind: 'conflict',
+      message: 'A rule with this pattern, domain and culture already exists.',
+    });
   });
 
   it('maps a 503 to unavailable', () => {
@@ -100,5 +107,17 @@ describe('deleteRule', () => {
     const send = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
     await expect(deleteRule(send, 12)).resolves.toEqual({ kind: 'error' });
+  });
+});
+
+describe('updateRule', () => {
+  it('sends the id and the request and maps the answer', async () => {
+    const send = vi.fn().mockResolvedValue({ data: { recordsRemoved: true, message: null } });
+    expect(await updateRule(send, 7, request)).toEqual({ kind: 'saved', recordsRemoved: true, message: undefined });
+    expect(send).toHaveBeenCalledWith(7, request);
+  });
+
+  it('maps a rejected send to error instead of throwing', async () => {
+    expect(await updateRule(vi.fn().mockRejectedValue(new Error('network')), 7, request)).toEqual({ kind: 'error' });
   });
 });

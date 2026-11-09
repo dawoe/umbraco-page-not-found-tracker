@@ -11,6 +11,8 @@ export type PnftBlockRuleResult =
   | { kind: 'deleted' }
   /** 400: the pattern or status code is not valid; `message` is the server's reason. */
   | { kind: 'invalid'; message: string | undefined }
+  /** 409: another rule already has the new pattern, domain and culture; `message` is the server's reason. */
+  | { kind: 'conflict'; message: string | undefined }
   /** 404: the rule no longer exists (deleted meanwhile). */
   | { kind: 'notFound' }
   /** 503: the tracking database is unavailable. */
@@ -29,6 +31,9 @@ export type PnftCreateRuleRequest = Required<{ [K in keyof CreateBlockRuleReques
 
 /** Sends the create block rule request. */
 export type PnftCreateRuleSend = (request: PnftCreateRuleRequest) => Promise<PnftBlockRuleResponse<CreateBlockRuleResponseModel>>;
+
+/** Sends the update block rule request for a rule id. */
+export type PnftUpdateRuleSend = (id: number, request: PnftCreateRuleRequest) => Promise<PnftBlockRuleResponse<CreateBlockRuleResponseModel>>;
 
 /** Sends the delete block rule request for a rule id. */
 export type PnftDeleteRuleSend = (id: number) => Promise<PnftBlockRuleResponse<unknown>>;
@@ -58,6 +63,15 @@ export async function createRule(send: PnftCreateRuleSend, request: PnftCreateRu
   }
 }
 
+/** Sends the update request and maps the answer (same answers as create, plus conflict); a rejected request counts as `error`. */
+export async function updateRule(send: PnftUpdateRuleSend, id: number, request: PnftCreateRuleRequest): Promise<PnftBlockRuleResult> {
+  try {
+    return mapCreateRuleResponse(await send(id, request));
+  } catch (error) {
+    return mapError(error ?? new Error('Request failed'));
+  }
+}
+
 /** Sends the delete request and maps the answer; a rejected request counts as `error` (it never throws). */
 export async function deleteRule(send: PnftDeleteRuleSend, id: number): Promise<PnftBlockRuleResult> {
   try {
@@ -71,6 +85,8 @@ function mapError(error: unknown): PnftBlockRuleResult {
   switch ((error as { status?: unknown } | undefined)?.status) {
     case 400:
       return { kind: 'invalid', message: readable((error as { problemDetails?: { detail?: unknown } }).problemDetails?.detail) };
+    case 409:
+      return { kind: 'conflict', message: readable((error as { problemDetails?: { detail?: unknown } }).problemDetails?.detail) };
     case 404:
       return { kind: 'notFound' };
     case 503:
