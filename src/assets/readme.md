@@ -1,12 +1,12 @@
 # Umbraco Page Not Found Tracker
 
-An Umbraco package that records requests that end in a 404 and, in later versions, lets editors
-turn tracked URLs into redirects or block them.
+An Umbraco package that records the requests on your site that end in a 404, shows your own 404 page for missing pages
+and files, and lets editors turn the tracked URLs into redirects or block them.
 
-This version shows the configured 404 page for missing pages and files, and records every 404 URL with a
-hit count in the Umbraco database (SQLite or SQL Server). There is no screen to view the tracked URLs yet
-(the backoffice dashboard is a placeholder); a dashboard, redirects and blocking are planned for upcoming
-versions.
+- **404 handling** for pages and files, in the right site and language.
+- **Tracking** of every URL that does not exist, with a hit count per URL, domain and culture (SQLite or SQL Server).
+- **A backoffice dashboard** in the Content section to search, sort and filter the tracked URLs.
+- **Redirects** and **blocking** straight from the dashboard.
 
 Supports **Umbraco 17** only.
 
@@ -42,8 +42,8 @@ app.UseUmbraco()
 await app.RunAsync();
 ```
 
-On first start the package creates its tables (`pageNotFoundTrackerUrl`) in the Umbraco database. On other
-databases than SQLite and SQL Server tracking stays off with an error in the log; the site keeps working.
+On first start the package creates its tables in the Umbraco database. On other databases than SQLite and SQL Server
+tracking stays off with an error in the log; the site keeps working.
 
 ## Settings
 
@@ -56,8 +56,18 @@ Optional, under `Umbraco:Community:PageNotFoundTracker` in `appsettings.json`, r
 | `FlushInterval` | `00:01:00` | How often recorded 404s are written to the database (minimum one second). |
 | `IncludeQueryString` | `false` | Treat URLs that differ only in their query string as different URLs. |
 | `ChannelCapacity` | `10000` | Maximum number of 404s held in memory between writes; beyond it new ones are dropped with a warning. |
+| `DashboardUserGroups` | empty | Aliases of the user groups that may use the dashboards. Empty: `admin` and `editor`. |
+
+All settings, with examples, are described in the
+[configuration reference](https://github.com/dawoe/umbraco-page-not-found-tracker/blob/develop/docs/configuration.md).
+
+## Documentation
+
+- [Getting started](https://github.com/dawoe/umbraco-page-not-found-tracker/blob/develop/docs/getting-started.md)
+- [All documentation](https://github.com/dawoe/umbraco-page-not-found-tracker/blob/develop/docs/README.md): the
+  dashboards, redirects, blocking, extension points and troubleshooting.
 
 ## Links
 
-- Source, issues and documentation: https://github.com/dawoe/umbraco-page-not-found-tracker
+- Source and issues: https://github.com/dawoe/umbraco-page-not-found-tracker
 - License: MIT

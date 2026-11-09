@@ -52,6 +52,11 @@ jobs:
         run: npm test
         working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
 
+      # The documentation samples (redirect form, row action) are type-checked here, never bundled.
+      - name: Check client samples
+        run: npm run check-samples
+        working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
+
       - name: NPM build
         run: npm run build
         working-directory: src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client
@@ -86,6 +91,20 @@ jobs:
       - name: Check package content
         shell: pwsh
         run: ./.github/scripts/check-package.ps1 -PackageDirectory "${{ env.NuGetDirectory }}"
+
+      # Every code block quoted in docs/ must match the compiled sample it quotes (the check's own tests run first).
+      - name: Check documentation samples
+        shell: pwsh
+        run: |
+          ./.github/scripts/tests/check-doc-samples.tests.ps1
+          ./.github/scripts/check-doc-samples.ps1
+
+      # Relative links and anchors in docs/, the README and the NuGet readme (the check's own tests run first).
+      - name: Check documentation links
+        shell: pwsh
+        run: |
+          ./.github/scripts/tests/check-doc-links.tests.ps1
+          ./.github/scripts/check-doc-links.ps1
 
       # E2E against the committed single-site scenario database (unattended install is a no-op).
       - name: E2E install dependencies

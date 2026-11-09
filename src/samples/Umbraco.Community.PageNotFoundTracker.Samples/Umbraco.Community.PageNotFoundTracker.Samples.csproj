@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Compiled samples quoted by the documentation in docs/extending. Not packable, not referenced by the test site:
+    the samples replace package defaults, so they must never be active in a host by accident.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Core/Umbraco.Community.PageNotFoundTracker.Core.csproj" />
+    <ProjectReference Include="../../code/Umbraco.Community.PageNotFoundTracker.Infrastructure/Umbraco.Community.PageNotFoundTracker.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
