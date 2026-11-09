@@ -10,6 +10,8 @@ Supports **Umbraco 17 only** (.NET 10), with SQLite or SQL Server as the Umbraco
 - **404 handling** for pages and files, in the right site and language.
 - **Tracking** of every URL that visitors request but does not exist: one row per URL, domain and culture with a hit
   count, written in batches by a background service.
+- **Automatic clean-up** of tracked URLs nobody requested for a year (configurable), once a day, on one server at a
+  time.
 - **A backoffice dashboard** in the Content section to search, sort, filter and page through the tracked URLs.
 - **Redirects**: turn a tracked URL into an Umbraco redirect with one action.
 - **Blocking**: answer scanner noise such as `/wp-admin/*` at once with a 403, 404 or 410, without tracking it.

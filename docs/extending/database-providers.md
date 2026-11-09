@@ -31,6 +31,9 @@ The dashboards show *Tracking database unsupported or unavailable* in both failu
 Your provider must ship migrations for **all** tables of the package, generated against
 `PageNotFoundTrackerDbContext` (it is public for this reason), in an assembly that you name in `MigrationsAssembly`.
 Later versions of the package add tables, so a new migration may be needed when you update the package.
+For example, the version with the automatic clean-up adds the migration `AddLastSeenIndex` (an index on the
+`LastSeen` column of the tracked URLs, which the clean-up deletes by): add a migration to your project when you
+update, and check it with `dotnet ef migrations has-pending-model-changes`.
 
 Generate them like any EF Core migrations, in your own project, with a design-time factory
 (`IDesignTimeDbContextFactory<PageNotFoundTrackerDbContext>`) that configures your provider:

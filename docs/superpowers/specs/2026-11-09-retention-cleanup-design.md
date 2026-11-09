@@ -1,6 +1,6 @@
 # Spec 8: Retention and clean-up of tracked URLs
 
-Status: approved (issue #7, branch `feature/7-retention-cleanup`)
+Status: implemented (issue #7, branch `feature/7-retention-cleanup`)
 Depends on: spec 3 (tracking), spec 7 (documentation)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 

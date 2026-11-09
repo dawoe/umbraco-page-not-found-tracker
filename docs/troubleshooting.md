@@ -27,6 +27,20 @@ The **Page not found** dashboard says *No 404s tracked yet*, or a URL you reques
    installer, nothing is tracked yet.
 8. **Is the queue full?** A flood of 404s beyond `ChannelCapacity` is dropped, with a warning in the log.
 
+## A tracked URL disappeared
+
+A URL that was in the **Page not found** dashboard is gone.
+
+1. **The clean-up removed it.** URLs whose last hit is more than `CleanupAfterDays` days ago (365 by default) are
+   removed once a day. The log has a line `Removed <count> tracked 404 URLs last seen before <date>.` Raise the
+   setting, or set `CleanupEnabled` to `false`, to keep them longer (see [Clean-up](how-it-works.md#clean-up)).
+2. **Someone created a redirect for it.** Creating a redirect removes the row. Look in Umbraco's Redirect URL
+   Management dashboard (see [Redirects](redirects.md)).
+3. **A block rule covers it.** Saving a block removes every row the pattern covers. Look in the **Blocked URLs**
+   dashboard (see [Blocking](blocking.md)).
+
+When the URL is requested again it comes back as a new row, starting from one hit.
+
 ## The 404 page does not appear
 
 You see Umbraco's plain 404 page, a blank page or the wrong site's page instead of your own.

@@ -5,6 +5,7 @@ and files, and lets editors turn the tracked URLs into redirects or block them.
 
 - **404 handling** for pages and files, in the right site and language.
 - **Tracking** of every URL that does not exist, with a hit count per URL, domain and culture (SQLite or SQL Server).
+- **Automatic clean-up** of tracked URLs nobody requested for a year (configurable).
 - **A backoffice dashboard** in the Content section to search, sort and filter the tracked URLs.
 - **Redirects** and **blocking** straight from the dashboard.
 
@@ -57,6 +58,8 @@ Optional, under `Umbraco:Community:PageNotFoundTracker` in `appsettings.json`, r
 | `IncludeQueryString` | `false` | Treat URLs that differ only in their query string as different URLs. |
 | `ChannelCapacity` | `10000` | Maximum number of 404s held in memory between writes; beyond it new ones are dropped with a warning. |
 | `DashboardUserGroups` | empty | Aliases of the user groups that may use the dashboards. Empty: `admin` and `editor`. |
+| `CleanupEnabled` | `true` | Remove tracked URLs automatically once a day. |
+| `CleanupAfterDays` | `365` | Remove a tracked URL once its last hit is more than this many days ago. |
 
 All settings, with examples, are described in the
 [configuration reference](https://github.com/dawoe/umbraco-page-not-found-tracker/blob/develop/docs/configuration.md).

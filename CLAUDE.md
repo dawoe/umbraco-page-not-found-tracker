@@ -15,7 +15,8 @@ URLs in the Content section, served by the package's own Management API) and red
 blocked URLs (spec 6: wildcard block rules with a status code and a domain/culture scope, answered before Umbraco with an
 empty body, never tracked; a "Block" row action and a second "Blocked URLs" dashboard tab).
 Implementer documentation (spec 7: the public `docs/` set, compiled samples and three CI checks) is built; see
-Documentation (spec 7) below. **A change to a setting, a contract, an extension point or documented behaviour must
+Documentation (spec 7) below. Retention (spec 8, issue #7: a daily distributed job removes tracked URLs not seen for
+`CleanupAfterDays`, default 365) is built; see Retention (spec 8) below. **A change to a setting, a contract, an extension point or documented behaviour must
 update the docs (and the quoted samples) in the same change.**
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
@@ -27,6 +28,7 @@ Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spe
 5. Redirect creation: `docs/superpowers/specs/2026-11-01-redirect-creation-design.md` (done)
 6. Blocked URLs: `docs/superpowers/specs/2026-11-01-blocked-urls-design.md` (done)
 7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md` (done)
+8. Retention and clean-up of tracked URLs (issue #7): `docs/superpowers/specs/2026-11-09-retention-cleanup-design.md` (done)
 
 Plans (`docs/superpowers/plans/`):
 
@@ -37,6 +39,7 @@ Plans (`docs/superpowers/plans/`):
 - Redirect creation: `docs/superpowers/plans/2026-11-04-redirect-creation.md`
 - Blocked URLs: `docs/superpowers/plans/2026-11-04-blocked-urls.md`
 - Documentation: `docs/superpowers/plans/2026-11-09-documentation.md`
+- Retention: `docs/superpowers/plans/2026-11-09-retention-cleanup.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -506,6 +509,8 @@ a change needs a restart):
 | `IncludeQueryString` | `false` | On: the query string is part of the identity (parameter order not normalised). |
 | `ChannelCapacity` | `10000` | Queue size and the bound of the pending (merge + retry) buffer; below 1 means the default. |
 | `DashboardUserGroups` | empty (= `admin`, `editor`) | User group aliases that may use the dashboard and its API; `admin` always passes. See Dashboard (spec 4). |
+| `CleanupEnabled` | `true` | Daily removal of old tracked URLs; independent of `TrackingEnabled`. See Retention (spec 8). |
+| `CleanupAfterDays` | `365` | Remove a row when `LastSeen` is more than this many days ago; below 1 means the default (`EffectiveCleanupAfterDays`). |
 
 **Flow.** Both 404 call points (spec 2) call `INotFoundRecorder`; `NotFoundTracker` (internal, `AddUnique`)
 normalises the occurrence with `TrackedUrlNormalizer` and writes it to `TrackingQueue` without awaiting and without
@@ -1105,6 +1110,41 @@ afterwards):
 **Not verified:** the modal's visual layout (it renders off-screen in the automation pane; fields and messages were driven
 through the DOM), the `recordsRemoved: false` warning toast, the unblock 404/503/network texts (Vitest mapping only), the
 hostnames profile, and the upsert's duplicate-key retry (no seam to inject the race; untested).
+
+## Retention (spec 8)
+
+Spec: `docs/superpowers/specs/2026-11-09-retention-cleanup-design.md`; plan `docs/superpowers/plans/2026-11-09-retention-cleanup.md`.
+Public owner of the behaviour: `docs/how-it-works.md#clean-up`; of the settings: `docs/configuration.md#clean-up`.
+
+- `TrackedUrlCleanupJob` (Infrastructure `Retention/`, internal, `IDistributedBackgroundJob`): name
+  `PageNotFoundTracker.TrackedUrlCleanup` (the key of its row in Umbraco's `umbracoDistributedJob`; **never rename it**),
+  period one day, batch size 1000, **no cap per run** (maintainer decision). Registered with
+  `AddSingleton<IDistributedBackgroundJob, TrackedUrlCleanupJob>()` always, also when `CleanupEnabled` is false (it then logs
+  at debug and returns), so the setting never adds or removes Umbraco's row. Run: `CleanupEnabled` check, then
+  `ITrackingPersistenceState.WaitUntilReadyAsync` (`Unavailable` returns silently, `Pending` waits), cut-off = UTC now minus
+  `EffectiveCleanupAfterDays` days (`DateTime.MinValue` when the age exceeds the calendar), batches until one is not full,
+  then one log line (information when rows were removed, else debug). Shutdown stops between batches and logs the partial
+  count; any other exception is logged as an error with the partial count and never thrown into Umbraco's scheduler.
+  It does not take the flush lock and does not touch `TrackingQueue`.
+- `ITrackedUrlCleaner` / `TrackedUrlCleaner` (internal seam, `AddUnique`): `DeleteBatchAsync(cutoff, batchSize, ct)` =
+  `SelectBatchAsync` (ids with `LastSeen < cutoff`, by `Id`, `Take`) then `DeleteAsync(ids, cutoff)` (`ExecuteDelete` where id
+  in the list **and still** `LastSeen < cutoff`, so a row a flush updated in between survives). Keep the batch at most 1000
+  (SQL Server's 2100 parameter limit). The context factory is resolved per call.
+- Index `IX_pageNotFoundTrackerUrl_LastSeen` (migration `AddLastSeenIndex` in both provider projects).
+- Umbraco 17.8 scheduler facts (decompiled `DistributedJobService`, `DistributedBackgroundJobHostedService`): a new job's
+  row gets `LastRun = now`, so the **first run is one period (a day) after install or upgrade**, restarts do not reset it,
+  and Umbraco waits `DistributedJobSettings.Delay` (one minute) before registering jobs; `EnsureJobsAsync` deletes rows of
+  jobs the starting server does not register (a rolling deploy can push the next run back a day); a claimed job is taken
+  over only after `LastAttemptedRun + Period + MaximumExecutionTime`; each server runs its distributed jobs **one after
+  another**, so a long clean-up delays webhook firing and scheduled publishing on that server (documented: lower
+  `CleanupAfterDays` in steps).
+- Tests: unit `TrackedUrlCleanupJobTests`, `PageNotFoundTrackerSettingsTests`, `InfrastructureComposerTests`
+  (Infrastructure.Tests; `CapturingLogger` has `Informations` and `ErrorExceptions`); integration `Retention/`
+  `TrackedUrlCleanerTests` and `LastSeenIndexMigrationTests` (SQLite and SQL Server), `CleanupJobRegistrationTests`
+  (`UmbracoIntegrationTest` runs no package composers: it calls `builder.AddPageNotFoundTracker()` in `CustomTestSetup`, then
+  `IDistributedJobService.EnsureJobsAsync()` and reads the row with `IDistributedJobRepository.GetByName` in a scope).
+- Git Bash on this machine cannot start or reach LocalDB (error 50); run the SQL Server cases from PowerShell with
+  `$env:PNFT_SQLSERVER_CONNECTION='Server=(localdb)\pnft-test;Integrated Security=True;TrustServerCertificate=True'`.
 
 ## Documentation (spec 7)
 
