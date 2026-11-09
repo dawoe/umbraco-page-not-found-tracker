@@ -1143,6 +1143,13 @@ Public owner of the behaviour: `docs/how-it-works.md#clean-up`; of the settings:
   `TrackedUrlCleanerTests` and `LastSeenIndexMigrationTests` (SQLite and SQL Server), `CleanupJobRegistrationTests`
   (`UmbracoIntegrationTest` runs no package composers: it calls `builder.AddPageNotFoundTracker()` in `CustomTestSetup`, then
   `IDistributedJobService.EnsureJobsAsync()` and reads the row with `IDistributedJobRepository.GetByName` in a scope).
+- Manual check (single-site, 2026-11-09): after the first start Umbraco logged "Registered distributed background job
+  PageNotFoundTracker.TrackedUrlCleanup, running every 1.00:00:00" (about a minute after start). With the site stopped, a
+  `node:sqlite` script set one tracked row's `LastSeen` to 2024 and the job's `lastRun` (columns `Name`, `lastRun`,
+  `lastAttemptedRun`, `period` in ticks, `IsRunning`) back to 2026-11-01. On the next start the job ran about a minute in and
+  logged "Removed 1 tracked 404 URLs last seen before 2025-11-09 13:15:06Z."; the aged row was gone, the recent row stayed,
+  `lastRun` moved to now. Database and `appsettings.json` restored afterwards. Not checked manually: SQL Server and a
+  load-balanced setup (covered by the integration tests and Umbraco's job table respectively).
 - Git Bash on this machine cannot start or reach LocalDB (error 50); run the SQL Server cases from PowerShell with
   `$env:PNFT_SQLSERVER_CONNECTION='Server=(localdb)\pnft-test;Integrated Security=True;TrustServerCertificate=True'`.
 
