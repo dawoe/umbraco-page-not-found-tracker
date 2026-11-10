@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateBlockRuleData, CreateBlockRuleErrors, CreateBlockRuleResponses, CreateTrackedUrlRedirectData, CreateTrackedUrlRedirectErrors, CreateTrackedUrlRedirectResponses, DeleteBlockRuleData, DeleteBlockRuleErrors, DeleteBlockRuleResponses, GetBlockRulesData, GetBlockRulesErrors, GetBlockRulesResponses, GetBlockScopeOptionsData, GetBlockScopeOptionsErrors, GetBlockScopeOptionsResponses, GetDashboardAccessData, GetDashboardAccessErrors, GetDashboardAccessResponses, GetTrackedUrlFilterOptionsData, GetTrackedUrlFilterOptionsErrors, GetTrackedUrlFilterOptionsResponses, GetTrackedUrlsData, GetTrackedUrlsErrors, GetTrackedUrlsResponses, UpdateBlockRuleData, UpdateBlockRuleErrors, UpdateBlockRuleResponses } from './types.gen';
+import type { CreateBlockRuleData, CreateBlockRuleErrors, CreateBlockRuleResponses, CreateTrackedUrlRedirectData, CreateTrackedUrlRedirectErrors, CreateTrackedUrlRedirectResponses, DeleteBlockRuleData, DeleteBlockRuleErrors, DeleteBlockRuleResponses, DeleteMatchingTrackedUrlsData, DeleteMatchingTrackedUrlsErrors, DeleteMatchingTrackedUrlsResponses, DeleteTrackedUrlData, DeleteTrackedUrlErrors, DeleteTrackedUrlResponses, DeleteTrackedUrlsData, DeleteTrackedUrlsErrors, DeleteTrackedUrlsResponses, GetBlockRulesData, GetBlockRulesErrors, GetBlockRulesResponses, GetBlockScopeOptionsData, GetBlockScopeOptionsErrors, GetBlockScopeOptionsResponses, GetDashboardAccessData, GetDashboardAccessErrors, GetDashboardAccessResponses, GetTrackedUrlFilterOptionsData, GetTrackedUrlFilterOptionsErrors, GetTrackedUrlFilterOptionsResponses, GetTrackedUrlsData, GetTrackedUrlsErrors, GetTrackedUrlsResponses, UpdateBlockRuleData, UpdateBlockRuleErrors, UpdateBlockRuleResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -68,6 +68,12 @@ export const getTrackedUrls = <ThrowOnError extends boolean = true>(options?: Op
     ...options
 });
 
+export const deleteTrackedUrl = <ThrowOnError extends boolean = true>(options: Options<DeleteTrackedUrlData, ThrowOnError>): RequestResult<DeleteTrackedUrlResponses, DeleteTrackedUrlErrors, ThrowOnError> => (options.client ?? client).delete<DeleteTrackedUrlResponses, DeleteTrackedUrlErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/{id}',
+    ...options
+});
+
 export const createTrackedUrlRedirect = <ThrowOnError extends boolean = true>(options: Options<CreateTrackedUrlRedirectData, ThrowOnError>): RequestResult<CreateTrackedUrlRedirectResponses, CreateTrackedUrlRedirectErrors, ThrowOnError> => (options.client ?? client).post<CreateTrackedUrlRedirectResponses, CreateTrackedUrlRedirectErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/{id}/redirect',
@@ -75,6 +81,26 @@ export const createTrackedUrlRedirect = <ThrowOnError extends boolean = true>(op
     headers: {
         'Content-Type': 'application/json',
         ...options.headers
+    }
+});
+
+export const deleteTrackedUrls = <ThrowOnError extends boolean = true>(options?: Options<DeleteTrackedUrlsData, ThrowOnError>): RequestResult<DeleteTrackedUrlsResponses, DeleteTrackedUrlsErrors, ThrowOnError> => (options?.client ?? client).post<DeleteTrackedUrlsResponses, DeleteTrackedUrlsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/delete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
+    }
+});
+
+export const deleteMatchingTrackedUrls = <ThrowOnError extends boolean = true>(options?: Options<DeleteMatchingTrackedUrlsData, ThrowOnError>): RequestResult<DeleteMatchingTrackedUrlsResponses, DeleteMatchingTrackedUrlsErrors, ThrowOnError> => (options?.client ?? client).post<DeleteMatchingTrackedUrlsResponses, DeleteMatchingTrackedUrlsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/delete-matching',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
     }
 });
 
