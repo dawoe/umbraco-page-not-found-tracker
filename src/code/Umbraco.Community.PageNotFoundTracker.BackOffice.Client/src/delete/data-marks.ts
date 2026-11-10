@@ -1,5 +1,7 @@
 /**
  * The `data-mark` hooks of the delete flow. The E2E tests keep their own copy of these values: change both together.
- * Umbraco marks the row action itself: `entity-action:Pnft.EntityAction.TrackedUrl.Delete`.
+ * Umbraco marks the row action itself: `entity-action:Pnft.EntityAction.TrackedUrl.Delete`. The "Delete selected" bulk
+ * action has no mark in 17.8: Umbraco renders it as `umb-entity-bulk-action` (a `uui-button` labelled with the text)
+ * inside `umb-collection-selection-actions`, the collection footer.
  */
 export const PNFT_DELETE_DATA_MARKS = {} as const;

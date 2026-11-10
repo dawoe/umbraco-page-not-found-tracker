@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { PNFT_TRACKED_URL_ENTITY_TYPE } from '../entity.js';
 import { PNFT_BLOCK_ACTION_ALIAS } from '../blocking/constants.js';
 import { manifests as blockingManifests } from '../blocking/manifests.js';
-import { PNFT_DELETE_ACTION_ALIAS } from './constants.js';
+import { PNFT_TRACKED_URL_COLLECTION_ALIAS } from '../collection/constants.js';
+import { PNFT_DELETE_ACTION_ALIAS, PNFT_DELETE_SELECTED_BULK_ACTION_ALIAS } from './constants.js';
 import { manifests } from './manifests.js';
 
 type AnyManifest = {
@@ -11,6 +12,8 @@ type AnyManifest = {
   weight?: number;
   forEntityTypes?: Array<string>;
   conditions?: Array<unknown>;
+  kind?: string;
+  meta?: { icon?: string; label?: string };
 };
 
 const byAlias = (alias: string) => manifests.find((manifest) => manifest.alias === alias) as AnyManifest | undefined;
@@ -33,5 +36,19 @@ describe('delete manifests', () => {
 
   it('the delete action has no condition so it shows on every row', () => {
     expect(byAlias(PNFT_DELETE_ACTION_ALIAS)?.conditions ?? []).toHaveLength(0);
+  });
+
+  it('the bulk action is registered for tracked URL rows only', () => {
+    const bulk = byAlias(PNFT_DELETE_SELECTED_BULK_ACTION_ALIAS);
+
+    expect(PNFT_DELETE_SELECTED_BULK_ACTION_ALIAS).toBe('Pnft.EntityBulkAction.TrackedUrl.Delete');
+    expect(bulk?.type).toBe('entityBulkAction');
+    expect(bulk?.kind).toBe('default');
+    expect(bulk?.weight).toBe(0);
+    expect(bulk?.forEntityTypes).toStrictEqual([PNFT_TRACKED_URL_ENTITY_TYPE]);
+    expect(bulk?.meta).toStrictEqual({ icon: 'icon-trash', label: '#pageNotFoundTracker_deleteSelected' });
+    // 17.8 does not filter bulk actions by forEntityTypes: the collection alias condition keeps the action (and with it
+    // row selection) out of every other collection, the block rule list included.
+    expect(bulk?.conditions).toStrictEqual([{ alias: 'Umb.Condition.CollectionAlias', match: PNFT_TRACKED_URL_COLLECTION_ALIAS }]);
   });
 });

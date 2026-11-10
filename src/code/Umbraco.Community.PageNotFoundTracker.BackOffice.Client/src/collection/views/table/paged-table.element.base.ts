@@ -1,5 +1,12 @@
 import { UmbCollectionViewElementBase } from '@umbraco-cms/backoffice/collection';
-import type { UmbTableColumn, UmbTableConfig, UmbTableElement, UmbTableItem } from '@umbraco-cms/backoffice/components';
+import type {
+  UmbTableColumn,
+  UmbTableConfig,
+  UmbTableDeselectedEvent,
+  UmbTableElement,
+  UmbTableItem,
+  UmbTableSelectedEvent,
+} from '@umbraco-cms/backoffice/components';
 import { UmbElementControllerHost } from '@umbraco-cms/backoffice/controller-api';
 import { UmbEntityContext } from '@umbraco-cms/backoffice/entity';
 import { css, html, state, type PropertyValues } from '@umbraco-cms/backoffice/external/lit';
@@ -32,6 +39,12 @@ export abstract class PnftPagedTableElementBase<TItem extends { entityType: stri
 
   /** The name of a row in the entity actions' accessible labels. */
   protected abstract entityName(item: TItem): string;
+
+  /**
+   * Whether rows get selection checkboxes. Off by default (the block rule table). Even when on, rows are only selectable
+   * while the collection's selection is (17.8 makes it selectable when a bulk action is permitted for the collection).
+   */
+  protected readonly allowSelection: boolean = false;
 
   @state()
   private _tableColumns: Array<UmbTableColumn> = [];
@@ -70,7 +83,18 @@ export abstract class PnftPagedTableElementBase<TItem extends { entityType: stri
   override willUpdate(changedProperties: PropertyValues): void {
     super.willUpdate(changedProperties);
 
-    if (changedProperties.has('_items') || changedProperties.has('_hideItemActions')) {
+    if (changedProperties.has('_selectable') || changedProperties.has('_multiple') || changedProperties.has('_selectOnly')) {
+      // As the 17.8 table collection view: select-all (current page only) when the selection allows several.
+      const allowSelection = this.allowSelection && this._selectable;
+      this.#tableConfig = {
+        allowSelection,
+        allowSelectAll: allowSelection && this._multiple,
+        selectOnly: allowSelection && this._selectOnly,
+        hideIcon: true,
+      };
+    }
+
+    if (changedProperties.has('_items') || changedProperties.has('_hideItemActions') || changedProperties.has('_selectable')) {
       this.#buildColumns();
       this.#buildRows();
     }
@@ -102,6 +126,7 @@ export abstract class PnftPagedTableElementBase<TItem extends { entityType: stri
     this._tableRows = this._items.map((item) => ({
       id: item.unique,
       entityType: item.entityType,
+      selectable: this.allowSelection && this._isSelectableItem(item),
       data: [...this.renderRowData(item), { columnAlias: PNFT_ENTITY_ACTIONS_COLUMN, value: { name: this.entityName(item) } }],
     }));
 
@@ -147,6 +172,32 @@ export abstract class PnftPagedTableElementBase<TItem extends { entityType: stri
     this.#rowContexts.set(item.id, { host, entityContext });
   };
 
+  /**
+   * Passes `umb-table`'s selection events to the collection's selection, as the 17.8 table collection view does: one
+   * row (the event names it) or select-all/deselect-all (the table's whole selection).
+   */
+  #onSelected(event: UmbTableSelectedEvent) {
+    event.stopPropagation();
+    const itemId = event.getItemId();
+
+    if (itemId) {
+      this._selectItem(itemId);
+    } else {
+      this._setSelection((event.target as UmbTableElement).selection);
+    }
+  }
+
+  #onDeselected(event: UmbTableDeselectedEvent) {
+    event.stopPropagation();
+    const itemId = event.getItemId();
+
+    if (itemId) {
+      this._deselectItem(itemId);
+    } else {
+      this._setSelection((event.target as UmbTableElement).selection);
+    }
+  }
+
   #onOrdered(event: Event) {
     const table = event.target as UmbTableElement;
     const orderBy = sortColumnIn(this.columns, table.orderingColumn);
@@ -174,10 +225,13 @@ export abstract class PnftPagedTableElementBase<TItem extends { entityType: stri
         .config=${this.#tableConfig}
         .columns=${this._tableColumns}
         .items=${this._tableRows}
+        .selection=${this._selection}
         .orderingColumn=${this._orderingColumn}
         .orderingDesc=${this._orderingDesc}
         .onRowRendered=${this.#onRowRendered}
-        @ordered=${this.#onOrdered}></umb-table>
+        @ordered=${this.#onOrdered}
+        @selected=${this.#onSelected}
+        @deselected=${this.#onDeselected}></umb-table>
     `;
   }
 

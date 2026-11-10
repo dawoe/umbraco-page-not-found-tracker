@@ -15,13 +15,17 @@ const CELL_STYLES = {
 
 /**
  * The table view of the tracked URL collection: the package's table base with the tracked URL columns. Each row is an
- * entity of `PNFT_TRACKED_URL_ENTITY_TYPE`, so the create redirect and block actions appear per row.
+ * entity of `PNFT_TRACKED_URL_ENTITY_TYPE`, so the create redirect, block and delete actions appear per row; rows can be
+ * selected for the "Delete selected" bulk action.
  */
 @customElement('pnft-tracked-url-table')
 export class PnftTrackedUrlTableElement extends PnftPagedTableElementBase<PnftTrackedUrlCollectionModel> {
   protected override readonly columns = PNFT_COLUMNS;
 
   protected override readonly rowMark = PNFT_DATA_MARKS.row;
+
+  /** Rows can be selected for the "Delete selected" bulk action. */
+  protected override readonly allowSelection = true;
 
   protected override entityName(item: PnftTrackedUrlCollectionModel): string {
     return item.url;

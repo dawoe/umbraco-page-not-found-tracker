@@ -124,5 +124,10 @@ export default {
     deleteFailedHeadline: 'The URL could not be deleted',
     deleteError: 'The request failed. Check that the site is running and try again.',
     deleteUnavailable: 'The tracking database is not available, so nothing can be deleted.',
+    deleteSelected: 'Delete selected',
+    deleteSelectedHeadline: 'Delete selected URLs',
+    deleteSelectedConfirmText: (count: number) =>
+      `Delete ${count} selected ${count === 1 ? 'URL' : 'URLs'} from the list? Each is tracked again from 1 the next time it is requested.`,
+    deletedMany: (count: number) => `${count} ${count === 1 ? 'URL has' : 'URLs have'} been removed from the list.`,
   },
 } satisfies UmbLocalizationDictionary;
