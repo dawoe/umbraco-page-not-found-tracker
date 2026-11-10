@@ -1,6 +1,6 @@
 # Spec 10: Delete tracked URLs from the dashboard
 
-Status: draft, awaiting approval (issue #8, branch `feature/8-delete-tracked-urls`)
+Status: implemented (issue #8, branch `feature/8-delete-tracked-urls`)
 Depends on: spec 4 (dashboard), spec 5 (the remover), spec 6 (queue discard by predicate), spec 7 (documentation)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 

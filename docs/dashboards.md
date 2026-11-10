@@ -53,8 +53,26 @@ What you may see instead of a list:
 - **Create redirect** sends visitors of the URL to a page you choose, and removes the row. Only available for pages
   without a query string. See [Redirects](redirects.md).
 - **Block** stops the URL for good with an answer such as *410 Gone*, and removes the row. Look for it in the
-  **...** menu next to **Create redirect**. For a file row it is the only action and is shown as a button. See
-  [Blocking](blocking.md).
+  **...** menu next to **Create redirect**. For a file row it is shown as a button. See [Blocking](blocking.md).
+- **Delete** removes the row from the list after a confirmation. It is in the **...** menu. See
+  [Deleting URLs](#deleting-urls).
+
+### Deleting URLs
+
+Delete a URL you do not want to see any more, for example a row you already handled another way.
+
+- **Delete** (in the **...** menu of a row) deletes that one row.
+- **Delete selected**: tick the boxes in front of the rows (the box in the header selects the whole page) and click
+  **Delete selected** at the bottom of the list. Only the rows on the current page can be selected, so one go deletes at
+  most 100.
+- **Delete all matching** (top right) deletes every URL the current search and filters match, not only the ones on
+  this page. The dialog tells you how many that is. When no search or filter is set it deletes **all** tracked URLs, and
+  you have to type `delete` before the **Delete** button works.
+
+Deleting cannot be undone, and each of these asks for a confirmation first. A deleted URL is not blocked or redirected:
+when it is requested again it is tracked as a new row, starting from one hit. Deleting is open to the same users as the
+rest of the dashboard. How a delete interacts with the hits that are still waiting to be written is explained in
+[How it works](how-it-works.md#deleting-tracked-urls).
 
 ## Blocked URLs
 

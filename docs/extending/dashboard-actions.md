@@ -18,8 +18,8 @@ Umbraco 17 has no entity type manifest. These strings are the registration: an e
 - A row with **one** permitted action shows it as a button.
 - A row with **two or more** shows the action with the highest `weight` as a button, and all of them in a **...** menu.
 - The package's own actions: **Create redirect** (weight 0) and **Block** (weight -10) on tracked URLs, **Edit**
-  (weight 0) and **Unblock** (weight -10) on block rules. On both kinds of rows, an action with a negative weight below
-  -10 goes in the menu; a positive weight makes yours the button.
+  (weight 0) and **Unblock** (weight -10) on block rules, and **Delete** (weight -20) on tracked URLs. On both kinds
+  of rows, an action with a negative weight below -10 goes in the menu; a positive weight makes yours the button.
 
 ## Example
 
@@ -81,6 +81,22 @@ The dashboards, and the endpoints behind them, are open to the user groups of th
 Register it from a composer marked `[ComposeAfter(typeof(PageNotFoundTrackerComposer))]`, with `AddUnique`
 (see [the registration rule](README.md#the-registration-rule)). The `admin` rule of the default implementation is not
 carried over: decide yourself whether administrators always pass.
+
+## Deleting tracked URLs from your own code
+
+The dashboard's **Delete**, **Delete selected** and **Delete all matching** go through `ITrackedUrlRemover` (namespace
+`Umbraco.Community.PageNotFoundTracker.Core.Tracking`). You can call it from your own code, or replace it. It is
+registered with `AddUnique`, like the other replaceable services (see
+[the registration rule](README.md#the-registration-rule)). It has three methods:
+
+- `DeleteAsync(TrackedUrl url, CancellationToken)` deletes one row and returns whether a row was deleted.
+- `DeleteAsync(IReadOnlyCollection<int> ids, CancellationToken)` deletes the rows with those ids and returns how many.
+- `DeleteMatchingAsync(TrackedUrlCriteria criteria, CancellationToken)` deletes every row the criteria (a search term
+  and a domain and a culture filter, as in the list) select, in batches, and returns how many.
+
+An implementation must also discard the hits still queued for the deleted rows, or the next flush brings them back (see
+[How it works](../how-it-works.md#deleting-tracked-urls)). If you replace the remover, you must implement all three
+methods: the last two were added after the interface first shipped, so a replacement written against the earlier interface no longer compiles.
 
 ## What is guaranteed, and what is not
 
