@@ -64,4 +64,13 @@ public abstract class TrackedUrlsControllerBase : ManagementApiControllerBase
             Status = StatusCodes.Status400BadRequest,
             Type = "Error",
         });
+
+    /// <summary>
+    /// Maps a filter value and its "empty" switch to a <see cref="TrackedUrlFilter"/>.
+    /// </summary>
+    /// <param name="value">The exact value, or <c>null</c> for no value filter.</param>
+    /// <param name="empty">Whether rows without a value are selected.</param>
+    /// <returns>The filter.</returns>
+    protected static TrackedUrlFilter ToFilter(string? value, bool empty) =>
+        empty ? TrackedUrlFilter.Empty : value is null ? TrackedUrlFilter.Any : TrackedUrlFilter.Exactly(value);
 }

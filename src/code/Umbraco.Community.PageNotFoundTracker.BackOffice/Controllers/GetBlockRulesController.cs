@@ -95,9 +95,6 @@ public sealed class GetBlockRulesController(IBlockRuleService ruleService, ITrac
         });
     }
 
-    private static TrackedUrlFilter ToFilter(string? value, bool empty) =>
-        empty ? TrackedUrlFilter.Empty : value is null ? TrackedUrlFilter.Any : TrackedUrlFilter.Exactly(value);
-
     private static BlockRuleResponseModel Map(BlockRule rule) => new()
     {
         Id = rule.Id,

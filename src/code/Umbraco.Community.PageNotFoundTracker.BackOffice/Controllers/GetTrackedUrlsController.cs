@@ -101,9 +101,6 @@ public sealed class GetTrackedUrlsController(ITrackedUrlQueryService queryServic
         });
     }
 
-    private static TrackedUrlFilter ToFilter(string? value, bool empty) =>
-        empty ? TrackedUrlFilter.Empty : value is null ? TrackedUrlFilter.Any : TrackedUrlFilter.Exactly(value);
-
     private TrackedUrlResponseModel Map(TrackedUrl row) => new()
     {
         Id = row.Id,
