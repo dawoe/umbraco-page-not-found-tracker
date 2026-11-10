@@ -726,7 +726,8 @@ refresh, Umbraco's interceptors), then `markClientConfigured()` (`client-ready.t
   the error and unavailable states, resets to page 1 on sort/search/filter/page size, page size 20 instead of 50,
   `setPageSize`, `requestFilterOptions`); `PnftTrackedUrlCollectionContext` is a thin subclass. The base overrides
   protected 17.8 internals and copies `collection-default.context.js` logic; the header `data-mark`s pass a Lit template
-  as the column name. **Re-check both on every Umbraco upgrade.** Its token `PNFT_TRACKED_URL_COLLECTION_CONTEXT` sits on
+  as the column name. The table base also relies on the 17.8 selection internals `_selectable` and `_isSelectableItem` of
+  `UmbCollectionViewElementBase` (spec 10). **Re-check all of these on every Umbraco upgrade.** Its token `PNFT_TRACKED_URL_COLLECTION_CONTEXT` sits on
   the framework alias with a discriminator: `pnftCollection === 'tracked-url'` (the block rule collection has the same
   shape, see Blocked URLs). `PNFT_PAGED_COLLECTION_CONTEXT` matches any package collection (`pnftCollection` is a string)
   for the shared toolbar pieces. The toolbar, states, search base, domain/culture filter and page size element are shared
@@ -1193,7 +1194,7 @@ is a plain removal (no redirect, no block); the URL is tracked again from 1 when
   `umb-confirm-modal`), bulk action `Pnft.EntityBulkAction.TrackedUrl.Delete` ("Delete selected", `delete-selected.bulk-action.ts`),
   collection action `Pnft.CollectionAction.TrackedUrl.DeleteAll` (kind `button`, `delete-all.collection-action.ts`) opening modal
   `Pnft.Modal.DeleteAll` (`delete-all-modal.element.ts`: the count, and without an active search or filter Confirm stays
-  disabled until `delete` is typed; the handler re-checks the typed word). `delete.service.ts` maps the API results (`criteriaFromFilter`
+  disabled until `delete` is typed; the modal's confirm handler re-checks the typed word). `delete.service.ts` maps the API results (`criteriaFromFilter`
   turns the list's filter into the request, `all: true` only for an empty filter). Rows have selection checkboxes (`allowSelection`
   on the tracked table only; the block rule table has none); selection is limited to the current page, so at most one page (100) is sent.
 - **Umbraco 17.8 does not filter bulk actions or collection actions by entity type**: it renders every permitted
@@ -1213,6 +1214,10 @@ is a plain removal (no redirect, no block); the URL is tracked again from 1 when
   run-scoped prefix `pnft-e2e-del-<run>`): `Delete_removes_a_single_row` (tracked again from 1), `Delete_selected_removes_the_selected_rows_only`,
   `Delete_all_matching_a_search_removes_only_those_rows`, `Delete_all_without_a_filter_needs_the_typed_word` (never confirms an
   unfiltered delete: it would wipe other runs' rows); afterAll deletes the run's leftovers through the filtered Delete all.
+- **Not verified:** the spec's manual check (multi-site-aliases: filter by domain, then delete matching) was not run; the
+  domain filter path is covered by integration and unit tests only. The row action's manual browser check was skipped (covered
+  by E2E). The `notFound` result branches in the bulk action and the delete-all action are unreachable today (their
+  endpoints return no 404).
 
 ## Retention (spec 8)
 

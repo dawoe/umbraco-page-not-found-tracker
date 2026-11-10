@@ -96,7 +96,7 @@ registered with `AddUnique`, like the other replaceable services (see
 
 An implementation must also discard the hits still queued for the deleted rows, or the next flush brings them back (see
 [How it works](../how-it-works.md#deleting-tracked-urls)). If you replace the remover, you must implement all three
-methods: the last two were added after the interface first shipped, so a replacement written against the earlier interface no longer compiles.
+methods (one row, a list of ids, and everything a filter matches).
 
 ## What is guaranteed, and what is not
 

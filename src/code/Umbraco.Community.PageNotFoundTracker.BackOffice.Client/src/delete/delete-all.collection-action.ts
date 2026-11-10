@@ -6,7 +6,6 @@ import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification';
 import { tryExecute } from '@umbraco-cms/backoffice/resources';
 import { deleteMatchingTrackedUrls as sendDeleteMatching } from '../api/index.js';
 import { PNFT_TRACKED_URL_COLLECTION_CONTEXT } from '../collection/collection.context-token.js';
-import { isFilterActive } from '../collection/state.js';
 import type { PnftPagedCollectionFilterModel } from '../collection/types.js';
 import { PNFT_DELETE_ALL_MODAL } from './delete-all-modal.token.js';
 import { criteriaFromFilter, deleteMatchingTrackedUrls } from './delete.service.js';
@@ -31,13 +30,15 @@ export class PnftDeleteAllCollectionAction extends UmbCollectionActionBase {
     }
 
     const filter = collection.getFilter() as PnftPagedCollectionFilterModel;
+    // One source for both the typed-word requirement and the request, so they cannot diverge.
+    const criteria = criteriaFromFilter(filter);
 
     // Taken before the modal opens: the reload below can remove the host of this action.
     const notifications = await this.getContext(UMB_NOTIFICATION_CONTEXT);
     const localize = new UmbLocalizationController(this);
 
     try {
-      await umbOpenModal(this, PNFT_DELETE_ALL_MODAL, { data: { total, filtered: isFilterActive(filter) } });
+      await umbOpenModal(this, PNFT_DELETE_ALL_MODAL, { data: { total, filtered: !criteria.all } });
     } catch {
       // Cancelled.
       return;
@@ -45,7 +46,7 @@ export class PnftDeleteAllCollectionAction extends UmbCollectionActionBase {
 
     const result = await deleteMatchingTrackedUrls(
       (criteria) => tryExecute(this, sendDeleteMatching({ body: { noDomain: false, noCulture: false, all: false, ...criteria } }), { disableNotifications: true }),
-      criteriaFromFilter(filter),
+      criteria,
     );
 
     collection.loadCollection();
