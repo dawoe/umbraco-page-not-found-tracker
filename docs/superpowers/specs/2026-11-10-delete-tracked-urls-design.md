@@ -1,6 +1,6 @@
 # Spec 10: Delete tracked URLs from the dashboard
 
-Status: draft (issue #8, branch `feature/8-delete-tracked-urls`)
+Status: draft, awaiting approval (issue #8, branch `feature/8-delete-tracked-urls`)
 Depends on: spec 4 (dashboard), spec 5 (the remover), spec 6 (queue discard by predicate), spec 7 (documentation)
 Series: see the table in `2026-11-01-solution-setup-design.md`
 
@@ -70,7 +70,9 @@ A count check was rejected as more complexity than the race deserves.
 
 ### Contract (Core)
 
-`ITrackedUrlRemover` (existing `DeleteAsync(TrackedUrl)` stays) gains:
+`ITrackedUrlRemover` (existing `DeleteAsync(TrackedUrl)` stays) gains the two methods below as plain members, not default
+interface members (decided with the maintainer): a custom replacer must implement them, a compile-time break to mention in
+the release notes.
 
 - `Task<int> DeleteAsync(IReadOnlyCollection<int> ids, CancellationToken ct)`: loads the identities of the rows, discards
   their queued hits, deletes by id; returns the number of rows deleted (ids already gone count 0).
@@ -87,11 +89,13 @@ drift.
   `TrackedUrlQueryService` and the remover.
 - Deleting by ids and by filter run inside `ITrackingFlusher.RunExclusiveAsync`. By ids: select the identities
   (`UrlHash`, `Domain`, `Culture`), `TrackingQueue.Discard` each, `ExecuteDelete` where id in the list.
-- Delete matching: `TrackingQueue.DiscardMatching` with an in-memory predicate equal to the filter, then `ExecuteDelete` of
-  the filtered query in one statement (no row loading). The predicate applies the same search rules as the list (the term
-  percent-decoded once, lower-cased, slash rules, "contains" ordinal ignore case on the stored normalised `Url`; domain and
-  culture compared as the list does). Parity between the SQL filter and the predicate is proven by a test as spec 6 does
-  for block patterns.
+- Delete matching (decided with the maintainer: batched): one `RunExclusiveAsync` per batch, so tracking is never stalled
+  for the length of the whole delete. Each batch selects up to 1000 rows (identity and id) matching the filter, ordered by
+  `Id`, discards their queued hits by identity and `ExecuteDelete`s those ids (the retention job's shape, spec 8); batches
+  repeat until one selects fewer than 1000. The count is the sum of the rows deleted. A failure or cancellation part-way
+  leaves what was already deleted deleted and reports the error. Rows that start matching during the run are picked up by
+  a later batch. Because the queue is discarded per batch from the selected identities, no in-memory search predicate is
+  needed and the SQL filter is the only definition of "matching".
 - Cancellation after the delete statement has run is not propagated for the discard (as spec 6's post-commit steps).
 - Hits for a deleted URL that arrive afterwards create a new row (legitimate). With several servers, another server's
   queued hits can recreate a row after the delete: accepted and documented, as in spec 5.
@@ -102,9 +106,11 @@ drift.
 |---|---|---|---|
 | `DeleteTrackedUrl` | `DELETE tracked-urls/{id:int}` | none | 200 `{ deleted: 1 }`; 404 problem when the row is gone; 503; 401/403 |
 | `DeleteTrackedUrls` | `POST tracked-urls/delete` | `{ ids: int[] }` (1 to 100, distinct) | 200 `{ deleted }`; 400 for empty, more than 100 or invalid ids; 503; 401/403 |
-| `DeleteMatchingTrackedUrls` | `POST tracked-urls/delete-matching` | `{ search?, domain?, noDomain?, culture?, noCulture? }` as the list's query | 200 `{ deleted }`; 400 (domain with noDomain, culture with noCulture); 503; 401/403 |
+| `DeleteMatchingTrackedUrls` | `POST tracked-urls/delete-matching` | `{ search?, domain?, noDomain?, culture?, noCulture?, all? }` (a filter, or `all: true`) | 200 `{ deleted }`; 400 (domain with noDomain, culture with noCulture, no filter without `all`, `all` together with a filter); 503; 401/403 |
 
-Validation follows the list endpoint. An empty filter body deletes everything. 503 when persistence is `Unavailable`;
+Validation follows the list endpoint. An empty filter body is refused: deleting everything needs `all: true` (decided with
+the maintainer), so a client that drops the filter fields gets a 400 instead of wiping the table. For `ids`: duplicates are
+silently removed, an id below 1 is 400, an unknown id counts 0 (my call). 503 when persistence is `Unavailable`;
 `Pending` waits. Operation IDs are the action method names.
 
 ### Client
@@ -118,16 +124,17 @@ Validation follows the list endpoint. An empty filter body deletes everything. 5
   after a confirmation naming the count); selection clears after a delete and when the page, sort or filter changes.
 - **Delete all matching**: a collection action next to the search box, label "Delete all matching", enabled when the
   list has at least one row. The confirmation names the total ("Delete 1,243 tracked URLs?") and, when a filter is set,
-  says it applies to the current filter; with no filter it says it deletes **all** tracked URLs. Then
-  `DeleteMatchingTrackedUrls` with the current filter; a success toast shows the real count.
+  says it applies to the current filter; with no filter it says it deletes **all** tracked URLs and Confirm stays
+  disabled until the editor types `delete` (decided with the maintainer). Then `DeleteMatchingTrackedUrls` with the
+  current filter, or `all: true` when there is none; a success toast shows the real count.
 - Texts in `localization/en.ts`, `data-mark` hooks in `collection/data-marks.ts` (the E2E tests keep a copy).
 - The dashboard row layout changes again (three actions: Create redirect inline, Block and Delete in the dropdown; file
   and query-string rows show Block inline, Delete in the dropdown): the E2E selectors need rechecking.
 
 ## Testing
 
-- Unit: remover (ids, filter, queue discard order, ids already gone), filter helper, controllers (200/400/404),
-  parity test of SQL filter vs in-memory predicate.
+- Unit: remover (ids, filter, more than one batch, queue discard order, ids already gone), filter helper, controllers
+  (200/400/404, the `all` rules).
 - Integration: remover on SQLite and SQL Server (rows gone, queued hits not written back, count returned),
   `TrackedUrlsApiTests` for the three operations (200/400/401/403/404, SQLite), the OpenAPI document lists them.
 - Vitest: the delete service mappings, the selection state, the confirmation texts, the manifests (Delete weight -20).
@@ -145,4 +152,7 @@ toolbar controls, and how selection is wired into `PnftPagedTableElementBase`.
 - Delete weight -20 and a danger-coloured confirmation.
 - The selection is limited to the current page and the API caps `ids` at 100.
 - No confirmation count check for "delete all matching".
-- "Delete all matching" with no filter is allowed (deletes everything) rather than disabled.
+- Selection clears on any reload of the list (including after Create redirect and Block).
+- No maximum row count for delete matching and no handling of a stale total beyond returning the real count.
+- Docs pages updated: `how-it-works.md`, `dashboards.md` and `docs/extending` (the remover); no new setting.
+- Wiring selection into the 17.8 table and collection is researched in the plan, not decided here.
