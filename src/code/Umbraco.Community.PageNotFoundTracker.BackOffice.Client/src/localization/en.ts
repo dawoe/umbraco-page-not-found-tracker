@@ -114,5 +114,15 @@ export default {
     unblockNotFound: 'This rule no longer exists. The list has been reloaded.',
     unblockFailedHeadline: 'The rule could not be removed',
     unblockError: 'The request failed. Check that the site is running and try again.',
+    delete: 'Delete',
+    deleteHeadline: 'Delete tracked URL',
+    deleteConfirmText: (url: string) =>
+      `Delete ${url} from the list? It is tracked again from 1 the next time it is requested.`,
+    deletedHeadline: 'URL deleted',
+    deleted: (url: string) => `${url} has been removed from the list.`,
+    deleteNotFound: 'This URL no longer exists. The list has been reloaded.',
+    deleteFailedHeadline: 'The URL could not be deleted',
+    deleteError: 'The request failed. Check that the site is running and try again.',
+    deleteUnavailable: 'The tracking database is not available, so nothing can be deleted.',
   },
 } satisfies UmbLocalizationDictionary;

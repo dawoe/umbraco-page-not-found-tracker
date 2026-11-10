@@ -1,0 +1,2 @@
+/** The alias of the "Delete" entity action on tracked URL rows. */
+export const PNFT_DELETE_ACTION_ALIAS = 'Pnft.EntityAction.TrackedUrl.Delete';
