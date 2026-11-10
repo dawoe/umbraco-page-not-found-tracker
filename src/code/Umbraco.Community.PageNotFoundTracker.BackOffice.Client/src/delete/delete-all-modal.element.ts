@@ -15,7 +15,16 @@ export class PnftDeleteAllModalElement extends UmbModalBaseElement<PnftDeleteAll
   @state()
   private _typed = '';
 
+  /** The one place that decides whether Confirm is allowed: a filtered delete always, an unfiltered one only once `delete` is typed. */
+  #canConfirm(): boolean {
+    return (this.data?.filtered ?? false) || isDeleteAllConfirmed(this._typed);
+  }
+
   #confirm() {
+    if (!this.#canConfirm()) {
+      return;
+    }
+
     this.value = { confirmed: true };
     this._submitModal();
   }
@@ -23,7 +32,7 @@ export class PnftDeleteAllModalElement extends UmbModalBaseElement<PnftDeleteAll
   override render() {
     const total = this.data?.total ?? 0;
     const filtered = this.data?.filtered ?? false;
-    const canConfirm = filtered || isDeleteAllConfirmed(this._typed);
+    const canConfirm = this.#canConfirm();
 
     return html`
       <uui-dialog-layout
