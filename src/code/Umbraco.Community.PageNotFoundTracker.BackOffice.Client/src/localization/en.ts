@@ -129,5 +129,12 @@ export default {
     deleteSelectedConfirmText: (count: number) =>
       `Delete ${count} selected ${count === 1 ? 'URL' : 'URLs'} from the list? Each is tracked again from 1 the next time it is requested.`,
     deletedMany: (count: number) => `${count} ${count === 1 ? 'URL has' : 'URLs have'} been removed from the list.`,
+    deleteAll: 'Delete all matching',
+    deleteAllHeadline: 'Delete all matching URLs',
+    deleteAllCountText: (count: number) => `Delete ${count} tracked ${count === 1 ? 'URL' : 'URLs'}?`,
+    deleteAllFilteredText: 'This deletes every URL matching the current search and filters, not only the ones on this page. Each is tracked again from 1 the next time it is requested.',
+    deleteAllEverythingText: 'No search or filter is active, so ALL tracked URLs will be deleted. Each is tracked again from 1 the next time it is requested.',
+    deleteAllTypeToConfirm: 'Type "delete" to confirm',
+    deleteAllConfirmLabel: 'Delete',
   },
 } satisfies UmbLocalizationDictionary;

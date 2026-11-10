@@ -1,6 +1,11 @@
 import { PNFT_TRACKED_URL_ENTITY_TYPE } from '../entity.js';
 import { PNFT_TRACKED_URL_COLLECTION_ALIAS } from '../collection/constants.js';
-import { PNFT_DELETE_ACTION_ALIAS, PNFT_DELETE_SELECTED_BULK_ACTION_ALIAS } from './constants.js';
+import {
+  PNFT_DELETE_ACTION_ALIAS,
+  PNFT_DELETE_ALL_ACTION_ALIAS,
+  PNFT_DELETE_ALL_MODAL_ALIAS,
+  PNFT_DELETE_SELECTED_BULK_ACTION_ALIAS,
+} from './constants.js';
 
 /** Umbraco's collection alias condition (a literal, so this file stays free of backoffice runtime imports for Vitest). */
 const COLLECTION_ALIAS_CONDITION = 'Umb.Condition.CollectionAlias';
@@ -41,5 +46,25 @@ export const manifests: Array<UmbExtensionManifest> = [
       label: '#pageNotFoundTracker_deleteSelected',
     },
     conditions: [{ alias: COLLECTION_ALIAS_CONDITION, match: PNFT_TRACKED_URL_COLLECTION_ALIAS }],
+  },
+  {
+    // 17.8 ships the `button` kind for collection actions (there is no `default` kind). It is not filtered by entity
+    // type, so the collection alias condition keeps it to the tracked URL list.
+    type: 'collectionAction',
+    kind: 'button',
+    alias: PNFT_DELETE_ALL_ACTION_ALIAS,
+    name: 'Page Not Found Tracker Delete All Collection Action',
+    api: () => import('./delete-all.collection-action.js'),
+    meta: {
+      label: '#pageNotFoundTracker_deleteAll',
+      additionalOptions: false,
+    },
+    conditions: [{ alias: COLLECTION_ALIAS_CONDITION, match: PNFT_TRACKED_URL_COLLECTION_ALIAS }],
+  },
+  {
+    type: 'modal',
+    alias: PNFT_DELETE_ALL_MODAL_ALIAS,
+    name: 'Page Not Found Tracker Delete All Modal',
+    element: () => import('./delete-all-modal.element.js'),
   },
 ];

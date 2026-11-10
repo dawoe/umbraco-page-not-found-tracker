@@ -3,7 +3,12 @@ import { PNFT_TRACKED_URL_ENTITY_TYPE } from '../entity.js';
 import { PNFT_BLOCK_ACTION_ALIAS } from '../blocking/constants.js';
 import { manifests as blockingManifests } from '../blocking/manifests.js';
 import { PNFT_TRACKED_URL_COLLECTION_ALIAS } from '../collection/constants.js';
-import { PNFT_DELETE_ACTION_ALIAS, PNFT_DELETE_SELECTED_BULK_ACTION_ALIAS } from './constants.js';
+import {
+  PNFT_DELETE_ACTION_ALIAS,
+  PNFT_DELETE_ALL_ACTION_ALIAS,
+  PNFT_DELETE_ALL_MODAL_ALIAS,
+  PNFT_DELETE_SELECTED_BULK_ACTION_ALIAS,
+} from './constants.js';
 import { manifests } from './manifests.js';
 
 type AnyManifest = {
@@ -50,5 +55,20 @@ describe('delete manifests', () => {
     // 17.8 does not filter bulk actions by forEntityTypes: the collection alias condition keeps the action (and with it
     // row selection) out of every other collection, the block rule list included.
     expect(bulk?.conditions).toStrictEqual([{ alias: 'Umb.Condition.CollectionAlias', match: PNFT_TRACKED_URL_COLLECTION_ALIAS }]);
+  });
+
+  it('the delete all action is a collection action for the tracked URL collection only', () => {
+    const all = byAlias(PNFT_DELETE_ALL_ACTION_ALIAS);
+
+    expect(PNFT_DELETE_ALL_ACTION_ALIAS).toBe('Pnft.CollectionAction.TrackedUrl.DeleteAll');
+    expect(all?.type).toBe('collectionAction');
+    expect(all?.kind).toBe('button');
+    expect(all?.meta).toStrictEqual({ label: '#pageNotFoundTracker_deleteAll', additionalOptions: false });
+    expect(all?.conditions).toStrictEqual([{ alias: 'Umb.Condition.CollectionAlias', match: PNFT_TRACKED_URL_COLLECTION_ALIAS }]);
+  });
+
+  it('the delete all modal is registered', () => {
+    expect(PNFT_DELETE_ALL_MODAL_ALIAS).toBe('Pnft.Modal.DeleteAll');
+    expect(byAlias(PNFT_DELETE_ALL_MODAL_ALIAS)?.type).toBe('modal');
   });
 });
