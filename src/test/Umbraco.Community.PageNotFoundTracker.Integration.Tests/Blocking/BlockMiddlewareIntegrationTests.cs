@@ -152,11 +152,52 @@ internal sealed class BlockMiddlewareIntegrationTests : PageNotFoundTestBase
         });
     }
 
-    private async Task AddRuleAsync(string pattern, int statusCode)
+    /// <summary>
+    /// Editing a rule frees the old path (404 page again, recorded) and blocks the new one (empty body, not recorded).
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Edited_rule_frees_the_old_path_and_blocks_the_new_one()
+    {
+        IBlockRuleService rules = this.GetRequiredService<IBlockRuleService>();
+        await this.WaitForPersistenceAsync();
+        await rules.CreateAsync("/pnft-old", 410, string.Empty, string.Empty, CancellationToken.None);
+        using (HttpResponseMessage blocked = await this.GetAsync("/pnft-old"))
+        {
+            Assert.That(blocked.StatusCode, Is.EqualTo(HttpStatusCode.Gone));
+        }
+
+        BlockRulePage page = await rules.QueryAsync(
+            new BlockRuleQuery(0, 10, BlockRuleSortColumn.Created, true, "pnft-old", TrackedUrlFilter.Any, TrackedUrlFilter.Any),
+            CancellationToken.None);
+        int id = page.Items.Single().Id;
+
+        CreateBlockRuleOutcome outcome = await rules.UpdateAsync(id, "/pnft-new/*", 403, string.Empty, string.Empty, CancellationToken.None);
+        using HttpResponseMessage old = await this.GetAsync("/pnft-old");
+        using HttpResponseMessage fresh = await this.GetAsync("/pnft-new/x");
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(outcome.Status, Is.EqualTo(CreateBlockRuleStatus.Saved));
+            Assert.That(old.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+            Assert.That(this.Recorder.Occurrences.Select(o => o.PathAndQuery), Does.Contain("/pnft-old"));
+            Assert.That(fresh.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(await fresh.Content.ReadAsStringAsync(), Is.Empty);
+            Assert.That(this.Recorder.Occurrences.Select(o => o.PathAndQuery), Does.Not.Contain("/pnft-new/x"));
+        });
+    }
+
+    private async Task WaitForPersistenceAsync()
     {
         using var timeout = new CancellationTokenSource(ReadyTimeout);
         bool ready = await this.GetRequiredService<ITrackingPersistenceState>().WaitUntilReadyAsync(timeout.Token);
         Assert.That(ready, Is.True, "The tracking persistence must become available.");
+    }
+
+    private async Task AddRuleAsync(string pattern, int statusCode)
+    {
+        using var timeout = new CancellationTokenSource(ReadyTimeout);
+        await this.WaitForPersistenceAsync();
 
         var factory = this.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>();
         await using (PageNotFoundTrackerDbContext dbContext = await factory.CreateDbContextAsync(timeout.Token))

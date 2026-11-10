@@ -59,6 +59,14 @@ export function buildScopeChoices(values: ReadonlyArray<string>, current: string
   return choices;
 }
 
+/**
+ * The choices of the status select: the offered codes, plus the current code when it is not one of them (a rule created
+ * through the API with another 4xx code), so an edit never silently changes it.
+ */
+export function buildStatusChoices(current: number): Array<number> {
+  return PNFT_BLOCK_STATUS_CODES.includes(current) ? [...PNFT_BLOCK_STATUS_CODES] : [...PNFT_BLOCK_STATUS_CODES, current];
+}
+
 /** Whether a pattern was entered (the server validates the rest). */
 export function isPatternGiven(pattern: string): boolean {
   return pattern.trim() !== '';

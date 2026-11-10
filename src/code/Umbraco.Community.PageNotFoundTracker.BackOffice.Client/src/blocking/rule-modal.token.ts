@@ -9,6 +9,8 @@ export interface PnftBlockRuleModalData {
   statusCode: number;
   /** The headline (a localization key prefixed with `#`, or text). */
   title: string;
+  /** Set for an edit: the id of the rule to update. Absent for a create. */
+  ruleId?: number;
 }
 
 /** The value the rule modal closes with once the rule is saved. */
@@ -20,7 +22,7 @@ export interface PnftBlockRuleModalValue {
   message?: string;
 }
 
-/** The rule modal: pattern, scope and status code; it creates the rule on Confirm. */
+/** The rule modal: pattern, scope and status code; it creates the rule on Confirm, or updates it when the data has a `ruleId`. */
 export const PNFT_CREATE_BLOCK_RULE_MODAL = new UmbModalToken<PnftBlockRuleModalData, PnftBlockRuleModalValue>(
   PNFT_CREATE_BLOCK_RULE_MODAL_ALIAS,
   {

@@ -1,8 +1,8 @@
 /**
  * The `data-mark` hooks of the blocked URLs dashboard and the block rule flow. The E2E tests keep their own copy of
  * these values: change both together. Umbraco marks the actions itself: the row buttons and dropdown items are
- * `entity-action:Pnft.EntityAction.TrackedUrl.Block` and `entity-action:Pnft.EntityAction.BlockRule.Unblock`, the
- * collection button is `collection-action:Pnft.CollectionAction.BlockRule.Add`.
+ * `entity-action:Pnft.EntityAction.TrackedUrl.Block`, `entity-action:Pnft.EntityAction.BlockRule.Edit` and
+ * `entity-action:Pnft.EntityAction.BlockRule.Unblock`, the collection button is `collection-action:Pnft.CollectionAction.BlockRule.Add`.
  */
 export const PNFT_BLOCK_DATA_MARKS = {
   /** The block rule collection element (host). */

@@ -36,4 +36,9 @@ public static class BlockingConstants
     /// The message when a rule was saved but the tracked records it covers could not be removed.
     /// </summary>
     public const string RecordsNotRemovedMessage = "The rule was saved, but the tracked URLs it covers could not be removed.";
+
+    /// <summary>
+    /// The message when an update would give a rule the pattern, domain and culture of another rule.
+    /// </summary>
+    public const string RuleExistsMessage = "A rule with this pattern, domain and culture already exists.";
 }

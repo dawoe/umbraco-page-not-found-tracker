@@ -7,7 +7,9 @@ import { PNFT_CREATE_BLOCK_RULE_MODAL, type PnftBlockRuleModalData, type PnftBlo
 /**
  * Opens the rule modal and, once the rule is saved, reloads the given collection and notifies: a success toast, or a
  * warning with the server's message when the rule is saved but the tracked URLs it covers could not be removed.
- * Cancelling does nothing. Shared by the "Block" row action and the "Add rule" collection action.
+ * Cancelling does nothing when creating; when editing (data has a `ruleId`) it reloads the list, because the modal cannot
+ * tell a plain cancel from a cancel after the rule turned out to be gone. Shared by the "Block" row action, the "Add
+ * rule" collection action and the "Edit" action.
  *
  * The notification context and the localization are taken before the modal opens: the reload removes the blocked row,
  * and with it the host of the row action.
@@ -25,7 +27,11 @@ export async function openRuleModalAndReload(
   try {
     value = await umbOpenModal(host, PNFT_CREATE_BLOCK_RULE_MODAL, { data });
   } catch {
-    // Cancelled.
+    // Cancelled. An edit reloads: the rule may have been removed meanwhile (the modal then asks to close and reload).
+    if (data.ruleId !== undefined) {
+      reload();
+    }
+
     return;
   }
 
@@ -35,7 +41,7 @@ export async function openRuleModalAndReload(
     notifications?.peek('positive', {
       data: {
         headline: localize.term('pageNotFoundTracker_blockSavedHeadline'),
-        message: localize.term('pageNotFoundTracker_blockSaved'),
+        message: localize.term(data.ruleId !== undefined ? 'pageNotFoundTracker_ruleUpdated' : 'pageNotFoundTracker_blockSaved'),
       },
     });
   } else {

@@ -119,5 +119,6 @@ more than `CleanupAfterDays` days ago (365 by default). It is on by default; `Cl
   dashboard, the URL is tracked again as a new row.
 - **Block** a tracked URL (or write a pattern): matching requests get the block's status code with an empty body,
   and every tracked row the pattern covers is removed. When the block is removed the URLs are tracked again from one.
+  A changed block applies at once; the URLs it no longer covers are tracked again from one.
 
 Both actions are done by editors in the dashboard: see [Dashboards](dashboards.md).

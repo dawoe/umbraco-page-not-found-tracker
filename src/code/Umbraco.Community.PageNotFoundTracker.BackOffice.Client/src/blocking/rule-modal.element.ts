@@ -3,15 +3,16 @@ import type { UUIInputEvent, UUISelectEvent } from '@umbraco-cms/backoffice/exte
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal';
 import { tryExecute } from '@umbraco-cms/backoffice/resources';
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style';
-import { createBlockRule, getBlockScopeOptions } from '../api/index.js';
+import { createBlockRule, getBlockScopeOptions, updateBlockRule } from '../api/index.js';
 import { fromChoiceValue, toChoiceValue } from '../collection/filters/filter-choices.js';
-import { createRule, type PnftBlockRuleResult } from './block-rule.service.js';
+import { createRule, updateRule, type PnftBlockRuleResult } from './block-rule.service.js';
 import { PNFT_BLOCK_DATA_MARKS } from './data-marks.js';
 import type { PnftBlockRuleModalData, PnftBlockRuleModalValue } from './rule-modal.token.js';
 import {
   PNFT_BLOCK_DEFAULT_STATUS_CODE,
   PNFT_BLOCK_STATUS_CODES,
   buildScopeChoices,
+  buildStatusChoices,
   isPatternGiven,
   toCreateRuleRequest,
   type PnftRuleFormValues,
@@ -21,7 +22,8 @@ import {
  * The rule modal ("Block" on a tracked URL row and "Add rule" on the blocked list). Fields: the pattern (required, `*`
  * is a wildcard), the domain and culture (all, or one of the values configured in Umbraco plus the preselected one) and
  * the status code (403, 404 or 410). A static warning says a rule applies to every matching request, not only missing
- * pages. Confirm creates the rule; a 400 shows the server's message inline and the modal stays open; on success it
+ * pages. Confirm creates the rule, or updates it when the data has a `ruleId` (edit mode: the Confirm label is Save and a
+ * 404 or 409 shows its message inline); a 400 shows the server's message inline and the modal stays open; on success it
  * closes with `{ saved, recordsRemoved, message }`.
  */
 @customElement('pnft-block-rule-modal')
@@ -93,10 +95,16 @@ export class PnftBlockRuleModalElement extends UmbModalBaseElement<PnftBlockRule
     this._submitting = true;
 
     try {
-      const result = await createRule(
-        (body) => tryExecute(this, createBlockRule({ body }), { disableNotifications: true }),
-        toCreateRuleRequest(this._values),
-      );
+      const ruleId = this.data?.ruleId;
+      const request = toCreateRuleRequest(this._values);
+      const result =
+        ruleId === undefined
+          ? await createRule((body) => tryExecute(this, createBlockRule({ body }), { disableNotifications: true }), request)
+          : await updateRule(
+              (id, body) => tryExecute(this, updateBlockRule({ path: { id }, body }), { disableNotifications: true }),
+              ruleId,
+              request,
+            );
 
       if (result.kind === 'saved') {
         this.value = { saved: true, recordsRemoved: result.recordsRemoved, message: result.message };
@@ -114,6 +122,10 @@ export class PnftBlockRuleModalElement extends UmbModalBaseElement<PnftBlockRule
     switch (result.kind) {
       case 'invalid':
         return result.message ?? this.localize.term('pageNotFoundTracker_blockInvalid');
+      case 'conflict':
+        return result.message ?? this.localize.term('pageNotFoundTracker_blockRuleExists');
+      case 'notFound':
+        return this.localize.term('pageNotFoundTracker_editRuleNotFound');
       case 'unavailable':
         return this.localize.term('pageNotFoundTracker_blockUnavailable');
       default:
@@ -180,8 +192,8 @@ export class PnftBlockRuleModalElement extends UmbModalBaseElement<PnftBlockRule
               id="status"
               data-mark=${PNFT_BLOCK_DATA_MARKS.statusCode}
               label=${this.localize.term('pageNotFoundTracker_columnStatusCode')}
-              .options=${PNFT_BLOCK_STATUS_CODES.map((code) => ({
-                name: this.localize.term(`pageNotFoundTracker_status${code}`),
+              .options=${buildStatusChoices(this.data?.statusCode ?? values.statusCode).map((code) => ({
+                name: PNFT_BLOCK_STATUS_CODES.includes(code) ? this.localize.term(`pageNotFoundTracker_status${code}`) : String(code),
                 value: String(code),
                 selected: code === values.statusCode,
               }))}
@@ -205,8 +217,8 @@ export class PnftBlockRuleModalElement extends UmbModalBaseElement<PnftBlockRule
           <uui-button
             data-mark=${PNFT_BLOCK_DATA_MARKS.confirm}
             look="primary"
-            color="danger"
-            label=${this.localize.term('pageNotFoundTracker_blockConfirm')}
+            color=${this.data?.ruleId === undefined ? 'danger' : 'positive'}
+            label=${this.localize.term(this.data?.ruleId === undefined ? 'pageNotFoundTracker_blockConfirm' : 'pageNotFoundTracker_saveRule')}
             .state=${this._submitting ? 'waiting' : undefined}
             ?disabled=${this._submitting}
             @click=${this.#onConfirm}></uui-button>

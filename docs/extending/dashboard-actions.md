@@ -17,8 +17,9 @@ Umbraco 17 has no entity type manifest. These strings are the registration: an e
 
 - A row with **one** permitted action shows it as a button.
 - A row with **two or more** shows the action with the highest `weight` as a button, and all of them in a **...** menu.
-- The package's own actions: **Create redirect** (weight 0) and **Block** (weight -10) on tracked URLs, **Unblock** on
-  block rules. An action with a negative weight below -10 goes in the menu; a positive weight makes yours the button.
+- The package's own actions: **Create redirect** (weight 0) and **Block** (weight -10) on tracked URLs, **Edit**
+  (weight 0) and **Unblock** (weight -10) on block rules. On both kinds of rows, an action with a negative weight below
+  -10 goes in the menu; a positive weight makes yours the button.
 
 ## Example
 

@@ -4,6 +4,7 @@ import {
   PNFT_BLOCK_STATUS_CODES,
   buildRuleDefaults,
   buildScopeChoices,
+  buildStatusChoices,
   isPatternGiven,
   toCreateRuleRequest,
 } from './rule-form.js';
@@ -84,5 +85,15 @@ describe('isPatternGiven / toCreateRuleRequest', () => {
       culture: 'en-US',
       statusCode: 403,
     });
+  });
+});
+
+describe('buildStatusChoices', () => {
+  it('buildStatusChoices_KeepsTheThreeCodesForAKnownCode', () => {
+    expect(buildStatusChoices(404)).toStrictEqual([403, 404, 410]);
+  });
+
+  it('buildStatusChoices_AddsAnUnknownCurrentCode', () => {
+    expect(buildStatusChoices(451)).toStrictEqual([403, 404, 410, 451]);
   });
 });

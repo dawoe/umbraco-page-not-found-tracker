@@ -3,12 +3,15 @@
 namespace Umbraco.Community.PageNotFoundTracker.Core.Blocking;
 
 /// <summary>
-/// The outcome of <see cref="IBlockRuleService.CreateAsync"/>.
+/// The outcome of <see cref="IBlockRuleService.CreateAsync"/> and <see cref="IBlockRuleService.UpdateAsync"/>.
 /// </summary>
 /// <param name="Status">The status.</param>
-/// <param name="Message">The message for the editor: why the rule is invalid, or null.</param>
+/// <param name="Message">
+/// The message for the editor: why the rule is invalid or conflicts with another rule, why its records were not removed,
+/// or null.
+/// </param>
 /// <param name="RecordsRemoved">
-/// Whether the tracked records the rule covers were removed. <c>false</c> for an invalid rule, and for a saved rule whose
-/// delete failed (the rule stays; the failure is logged).
+/// Whether the tracked records the rule covers were removed. <c>false</c> for a rule that was not saved, and for a saved
+/// rule whose delete failed (the rule stays; the failure is logged).
 /// </param>
 public sealed record CreateBlockRuleOutcome(CreateBlockRuleStatus Status, string? Message, bool RecordsRemoved);
