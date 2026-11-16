@@ -51,6 +51,39 @@ public abstract class TrackedUrlsControllerBase : ManagementApiControllerBase
     }
 
     /// <summary>
+    /// Maps a value and its "none" flag to a filter: the empty filter when the flag is set, the exact value when there
+    /// is one, otherwise no filter.
+    /// </summary>
+    /// <param name="value">The value, or null.</param>
+    /// <param name="empty">Whether rows without a value are asked for.</param>
+    /// <returns>The filter.</returns>
+    protected static TrackedUrlFilter ToFilter(string? value, bool empty) =>
+        empty ? TrackedUrlFilter.Empty : value is null ? TrackedUrlFilter.Any : TrackedUrlFilter.Exactly(value);
+
+    /// <summary>
+    /// Rejects a domain or culture filter that contradicts itself (a value together with its "none" flag).
+    /// </summary>
+    /// <param name="domain">The domain, or null.</param>
+    /// <param name="noDomain">Whether URLs without a domain are asked for.</param>
+    /// <param name="culture">The culture, or null.</param>
+    /// <param name="noCulture">Whether URLs without a culture are asked for.</param>
+    /// <returns><c>null</c> when the filters are consistent; otherwise a 400 result.</returns>
+    protected IActionResult? ValidateFilters(string? domain, bool noDomain, string? culture, bool noCulture)
+    {
+        if (domain is not null && noDomain)
+        {
+            return this.InvalidRequest("Contradicting domain filter", "Use either domain or noDomain, not both.");
+        }
+
+        if (culture is not null && noCulture)
+        {
+            return this.InvalidRequest("Contradicting culture filter", "Use either culture or noCulture, not both.");
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Creates a 400 result with problem details.
     /// </summary>
     /// <param name="title">The title.</param>

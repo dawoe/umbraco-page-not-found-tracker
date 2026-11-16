@@ -35,6 +35,8 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
 
     private const string FilterOptionsUrl = ApiBase + "/tracked-urls/filter-options";
 
+    private const string ExportUrl = ApiBase + "/tracked-urls/export";
+
     private const string AccessUrl = ApiBase + "/access";
 
     private const string OpenApiDocumentUrl = "/umbraco/swagger/page-not-found-tracker-management-api/swagger.json";
@@ -270,6 +272,98 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
     }
 
     /// <summary>
+    /// A user in an allowed group gets the CSV: UTF-8 with a byte order mark, the header and the seeded rows.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Export_AllowedGroup_Returns200WithBomHeaderAndSeededRow()
+    {
+        await this.SeedAsync();
+        await this.AuthenticateClientAsync(this.Client, "export-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+
+        using HttpResponseMessage response = await this.Client.GetAsync(new Uri(ExportUrl, UriKind.Relative));
+        byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+        string text = new UTF8Encoding(false).GetString(bytes, 3, bytes.Length - 3);
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), text);
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.Content.Headers.ContentType?.ToString(), Is.EqualTo("text/csv; charset=utf-8"));
+            Assert.That(response.Content.Headers.ContentDisposition?.ToString(), Does.StartWith("attachment; filename=\"page-not-found-").And.EndWith(".csv\""));
+            Assert.That(bytes.Take(3), Is.EqualTo(new byte[] { 0xEF, 0xBB, 0xBF }));
+            string[] lines = text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            Assert.That(lines[0], Is.EqualTo("Url;Relative path;Domain;Culture;Type;First seen (UTC);Last seen (UTC);Hits"));
+            Assert.That(lines[1], Does.StartWith("/Popular;/popular;").And.Contain(";Page;2026-11-01 08:00:00;").And.EndWith(";5"));
+            Assert.That(lines[2], Does.StartWith("/rare.pdf;").And.Contain(";File;"));
+            Assert.That(lines, Has.Length.EqualTo(3));
+        });
+    }
+
+    /// <summary>
+    /// The export follows the search and the sort of the list, without paging.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Export_FollowsSearchAndOrder()
+    {
+        await this.SeedAsync();
+        await this.AuthenticateClientAsync(this.Client, "export-order-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+
+        string searched = await this.Client.GetStringAsync(new Uri(ExportUrl + "?search=rare", UriKind.Relative));
+        string ascending = await this.Client.GetStringAsync(new Uri(ExportUrl + "?orderBy=Url&direction=Ascending", UriKind.Relative));
+        string descending = await this.Client.GetStringAsync(new Uri(ExportUrl + "?orderBy=Url&direction=Descending", UriKind.Relative));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(searched, Does.Contain("/rare.pdf").And.Not.Contain("/Popular"));
+
+            // The sort is on the stored URL (/rare.pdf before /sitea/popular), not on the displayed one.
+            Assert.That(ascending.IndexOf("/rare.pdf", StringComparison.Ordinal), Is.LessThan(ascending.IndexOf("/Popular", StringComparison.Ordinal)));
+            Assert.That(descending.IndexOf("/Popular", StringComparison.Ordinal), Is.LessThan(descending.IndexOf("/rare.pdf", StringComparison.Ordinal)));
+        });
+    }
+
+    /// <summary>
+    /// A user whose only group is not in the setting gets 403 from the export.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Export_GroupOutsideSetting_Returns403()
+    {
+        await this.AuthenticateWithSectionsAsync("pnftExportOutside", Constants.Applications.Content);
+
+        using HttpResponseMessage response = await this.Client.GetAsync(new Uri(ExportUrl, UriKind.Relative));
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+    }
+
+    /// <summary>
+    /// An anonymous caller gets 401 from the export.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Export_Anonymous_Returns401()
+    {
+        using HttpResponseMessage response = await this.Client.GetAsync(new Uri(ExportUrl, UriKind.Relative));
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+    }
+
+    /// <summary>
+    /// A contradicting filter is a 400 for an allowed user.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Export_ContradictingFilter_Returns400()
+    {
+        await this.AuthenticateClientAsync(this.Client, "export-400-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+
+        using HttpResponseMessage response = await this.Client.GetAsync(new Uri(ExportUrl + "?domain=a&noDomain=true", UriKind.Relative));
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+    }
+
+    /// <summary>
     /// The package's OpenAPI document holds the operations with stable IDs.
     /// </summary>
     /// <returns>A task.</returns>
@@ -291,6 +385,7 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
             {
                 (ListUrl, "GetTrackedUrls"),
                 (FilterOptionsUrl, "GetTrackedUrlFilterOptions"),
+                (ExportUrl, "ExportTrackedUrls"),
                 (AccessUrl, "GetDashboardAccess"),
                 (ListUrl + "/{id}/redirect", "CreateTrackedUrlRedirect"),
                 (ApiBase + "/block-rules", "GetBlockRules"),
