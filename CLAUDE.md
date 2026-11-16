@@ -1208,6 +1208,13 @@ seam: `docs/extending/tracked-url-export.md`.
   Server), `ManagementApi/TrackedUrlsApiTests` `Export_*` (200 with BOM, header and row; search and order; 403, 401, 400) and the operation in the OpenAPI
   test. Vitest: `buildExportQuery`, `fileNameFromDisposition`, `classifyExportError`, the export manifest. E2E `tests/export.spec.ts` (single-site, run-scoped
   prefix, `FlushInterval=00:00:01`): the download has the BOM, the header and exactly the matching rows in hits order, and follows the list's sort.
+- **Manual checks** (2026-11-16, single-site, 300,000 rows of about 280 bytes bulk-inserted with `node:sqlite` while the site was stopped, a
+  client-credentials token, `HttpClient` with `ResponseHeadersRead` streaming to a file): `GET tracked-urls/export?orderBy=Url&direction=Ascending` answered
+  200 `text/csv; charset=utf-8` with the disposition header, the file was 84 MB (first bytes `EF BB BF`, 300,001 lines) in 5.9 s, and the server's
+  working set went from 275 MB to a peak of 315 MB: the memory use does not grow with the file. The database and `appsettings.json` were restored
+  afterwards. Not checked: opening the file in Excel with a `;` and with a `,` regional setting (no Excel on the development machine; the format
+  follows Excel's documented behaviour), a mid-stream database failure against a real database (unit-tested with a throwing enumerable), and the
+  Export button's visual placement in the toolbar (E2E drives the button by its data-mark).
 
 ## Retention (spec 8)
 

@@ -58,7 +58,7 @@ What you may see instead of a list:
 
 ### Export
 
-**Export** (above the list) downloads the tracked URLs as a CSV file. It exports **everything** the current search,
+The **Export** button downloads the tracked URLs as a CSV file. It exports **everything** the current search,
 filters and sort match, not only the page you see: search for `/blog/`, filter on a domain, sort on **Last seen**, and
 the file holds every matching row in that order. With nothing filtered it holds all tracked URLs.
 
