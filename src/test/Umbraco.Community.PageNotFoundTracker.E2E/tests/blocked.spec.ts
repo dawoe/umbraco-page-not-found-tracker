@@ -251,8 +251,8 @@ test.describe('blocked URLs', () => {
     expect((await request.get(path)).status()).toBe(404);
     await openTrackedAndSearch(page, `${prefix}-unblock`, 1);
     await expect(trackedRowFor(page, path)).toHaveCount(1);
-    // Hits is the 7th cell (url, domain, culture, type, first seen, last seen, hits).
-    await expect(trackedRowFor(page, path).locator('uui-table-cell').nth(6)).toHaveText(/^\s*1\s*$/);
+    // Hits is the 8th cell (selection checkbox, url, domain, culture, type, first seen, last seen, hits).
+    await expect(trackedRowFor(page, path).locator('uui-table-cell').nth(7)).toHaveText(/^\s*1\s*$/);
   });
 
   test('Umbraco_owned_pattern_is_rejected_with_a_message', async ({ page }) => {

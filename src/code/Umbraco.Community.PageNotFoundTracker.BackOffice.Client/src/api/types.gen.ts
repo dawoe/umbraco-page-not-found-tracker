@@ -45,6 +45,23 @@ export type DashboardAccessResponseModel = {
     allowed: boolean;
 };
 
+export type DeleteMatchingTrackedUrlsRequestModel = {
+    search?: string | null;
+    domain?: string | null;
+    noDomain: boolean;
+    culture?: string | null;
+    noCulture: boolean;
+    all: boolean;
+};
+
+export type DeleteTrackedUrlsRequestModel = {
+    ids?: Array<number> | null;
+};
+
+export type DeleteTrackedUrlsResponseModel = {
+    deleted: number;
+};
+
 export type DirectionModel = 'Ascending' | 'Descending';
 
 export type PagedBlockRuleResponseModel = {
@@ -359,6 +376,45 @@ export type GetTrackedUrlsResponses = {
 
 export type GetTrackedUrlsResponse = GetTrackedUrlsResponses[keyof GetTrackedUrlsResponses];
 
+export type DeleteTrackedUrlData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/{id}';
+};
+
+export type DeleteTrackedUrlErrors = {
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Not Found
+     */
+    404: ProblemDetails;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type DeleteTrackedUrlError = DeleteTrackedUrlErrors[keyof DeleteTrackedUrlErrors];
+
+export type DeleteTrackedUrlResponses = {
+    /**
+     * OK
+     */
+    200: DeleteTrackedUrlsResponseModel;
+};
+
+export type DeleteTrackedUrlResponse = DeleteTrackedUrlResponses[keyof DeleteTrackedUrlResponses];
+
 export type CreateTrackedUrlRedirectData = {
     body?: CreateRedirectRequestModel;
     path: {
@@ -405,6 +461,80 @@ export type CreateTrackedUrlRedirectResponses = {
 };
 
 export type CreateTrackedUrlRedirectResponse = CreateTrackedUrlRedirectResponses[keyof CreateTrackedUrlRedirectResponses];
+
+export type DeleteTrackedUrlsData = {
+    body?: DeleteTrackedUrlsRequestModel;
+    path?: never;
+    query?: never;
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/delete';
+};
+
+export type DeleteTrackedUrlsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type DeleteTrackedUrlsError = DeleteTrackedUrlsErrors[keyof DeleteTrackedUrlsErrors];
+
+export type DeleteTrackedUrlsResponses = {
+    /**
+     * OK
+     */
+    200: DeleteTrackedUrlsResponseModel;
+};
+
+export type DeleteTrackedUrlsResponse = DeleteTrackedUrlsResponses[keyof DeleteTrackedUrlsResponses];
+
+export type DeleteMatchingTrackedUrlsData = {
+    body?: DeleteMatchingTrackedUrlsRequestModel;
+    path?: never;
+    query?: never;
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/delete-matching';
+};
+
+export type DeleteMatchingTrackedUrlsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type DeleteMatchingTrackedUrlsError = DeleteMatchingTrackedUrlsErrors[keyof DeleteMatchingTrackedUrlsErrors];
+
+export type DeleteMatchingTrackedUrlsResponses = {
+    /**
+     * OK
+     */
+    200: DeleteTrackedUrlsResponseModel;
+};
+
+export type DeleteMatchingTrackedUrlsResponse = DeleteMatchingTrackedUrlsResponses[keyof DeleteMatchingTrackedUrlsResponses];
 
 export type GetTrackedUrlFilterOptionsData = {
     body?: never;
