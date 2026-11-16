@@ -10,6 +10,7 @@ what is and is not guaranteed.
 | `ITrackingDatabaseProvider` (and its optional `Upsert`) | Which databases tracking and blocking support | A site on a database other than SQLite or SQL Server | [Database providers](database-providers.md) |
 | `IRedirectProvider` | Where a redirect is created | A site with its own redirect system | [Redirect providers](redirect-providers.md) |
 | `pnftRedirectForm` extension type | The form in the Create redirect dialog | A custom provider that needs other input than a target page | [Redirect providers](redirect-providers.md) |
+| `ITrackedUrlExporter` | Where the CSV export reads its rows from | A site that keeps its tracked URLs in another store | [Tracked URL export](tracked-url-export.md) |
 | Entity actions on the dashboard rows | The buttons on the rows | Extra actions on tracked URLs or block rules | [Dashboard actions](dashboard-actions.md) |
 | `IDashboardAccess` | Who may use the dashboards | An access rule that cannot be written as user groups | [Dashboard actions](dashboard-actions.md#who-may-use-the-dashboards) |
 

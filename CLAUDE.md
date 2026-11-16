@@ -17,7 +17,9 @@ empty body, never tracked; a "Block" row action and a second "Blocked URLs" dash
 Implementer documentation (spec 7: the public `docs/` set, compiled samples and three CI checks) is built; see
 Documentation (spec 7) below. Retention (spec 8, issue #7: a daily distributed job removes tracked URLs not seen for
 `CleanupAfterDays`, default 365) is built; see Retention (spec 8) below. Editing block rules (spec 9, issue #11: the pattern,
-status code, domain and culture of an existing rule changed in place) is built; see Blocked URLs below. **A change to a setting, a contract, an extension point or documented behaviour must
+status code, domain and culture of an existing rule changed in place) is built; see Blocked URLs below. The CSV export of the tracked
+URLs (spec 10, issue #9: an "Export" action that downloads everything the current search, filters and sort match, streamed, for Excel)
+is built; see Export (spec 10) below. **A change to a setting, a contract, an extension point or documented behaviour must
 update the docs (and the quoted samples) in the same change.**
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
@@ -31,6 +33,7 @@ Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spe
 7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md` (done)
 8. Retention and clean-up of tracked URLs (issue #7): `docs/superpowers/specs/2026-11-09-retention-cleanup-design.md` (done)
 9. Edit block rules (issue #11): `docs/superpowers/specs/2026-11-09-edit-block-rules-design.md` (done)
+10. Export tracked URLs (issue #9): `docs/superpowers/specs/2026-11-16-export-tracked-urls-design.md` (done)
 
 Plans (`docs/superpowers/plans/`):
 
@@ -43,6 +46,7 @@ Plans (`docs/superpowers/plans/`):
 - Documentation: `docs/superpowers/plans/2026-11-09-documentation.md`
 - Retention: `docs/superpowers/plans/2026-11-09-retention-cleanup.md`
 - Edit block rules: `docs/superpowers/plans/2026-11-09-edit-block-rules.md`
+- Export: `docs/superpowers/plans/2026-11-16-export-tracked-urls.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -64,13 +68,14 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
   tracking database providers, each with its own EF Core `Migrations/` and a design-time factory
   (`IsPackable=false`, bundled into the entry package)
 - `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice/` — Razor class library with the
-  Management API (controllers, response models, the dashboard access policy, the OpenAPI document). Its
+  Management API (controllers, response models, the dashboard access policy, the OpenAPI document, `Export/`: the CSV writer and the streaming result). Its
   `wwwroot/App_Plugins/PageNotFoundTracker` is the client build output (gitignored)
 - `src/code/Umbraco.Community.PageNotFoundTracker.BackOffice.Client/` — backoffice client
   (TypeScript, Lit, Vite, Vitest): the generated API client (`src/api/`), the tracked URL collection
   (`src/collection/`), the dashboard (`src/dashboards/tracked-urls/`), the access condition
   (`src/conditions/`), the create redirect flow (`src/redirect/`: form extension type, modal, default form, row action), the
-  blocked URLs pieces (`src/blocking/`: rule collection and dashboard, Block/Unblock actions, Add rule, rule modal) and the
+  blocked URLs pieces (`src/blocking/`: rule collection and dashboard, Block/Unblock actions, Add rule, rule modal), the
+  export action (`src/export/`) and the
   English texts (`src/localization/`). Shared paged-collection bases live in `src/collection/`. `src/client-ready.ts` lives outside `src/api/` on purpose (see Redirects). The spec 1
   placeholder dashboard is gone
 - `src/test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests/` and `.BackOffice.Tests/` —
@@ -79,7 +84,7 @@ no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch
   (boots Umbraco on SQLite with the package composed in; tracking database tests on SQLite and SQL Server; blocking in
   `Blocking/` and `ManagementApi/BlockRulesApiTests.cs`)
 - `src/test/Umbraco.Community.PageNotFoundTracker.E2E/` — Playwright tests (`tests/not-found.spec.ts`,
-  `tests/dashboard.spec.ts`, `tests/redirect.spec.ts`, `tests/blocked.spec.ts`)
+  `tests/dashboard.spec.ts`, `tests/redirect.spec.ts`, `tests/blocked.spec.ts`, `tests/export.spec.ts`)
 - `test-sites/Website-V17/` — Umbraco 17 test site (Clean starter kit), project-references the
   entry package, both persistence projects and BackOffice (the entry project references them `PrivateAssets=all`
   and never uses them in code, so a project-referencing site would not get their dlls: tracking would be off and
@@ -1158,6 +1163,52 @@ afterwards):
 through the DOM), the edit modal's visual layout and its 404 ("rule no longer exists") text (the E2E tests drive the DOM and cover the 409 text), the `recordsRemoved: false` warning toast, the unblock 404/503/network texts (Vitest mapping only), the
 hostnames profile, and the upsert's duplicate-key retry (no seam to inject the race; untested).
 
+## Export (spec 10)
+
+An "Export" collection action on the tracked URLs dashboard downloads every row the current search, filters and sort match as
+a CSV for Excel. Spec: `docs/superpowers/specs/2026-11-16-export-tracked-urls-design.md`; plan
+`docs/superpowers/plans/2026-11-16-export-tracked-urls.md`. Public owner of the behaviour: `docs/dashboards.md#export`; of the
+seam: `docs/extending/tracked-url-export.md`.
+
+- **Endpoint** (BackOffice, `ExportTrackedUrlsController`, policy `PageNotFoundTracker.DashboardAccess`, tag `Tracked URL`):
+  `GET tracked-urls/export`, operation `ExportTrackedUrls`. Query: `orderBy`, `direction`, `search`, `domain`, `noDomain`, `culture`,
+  `noCulture` as in `GetTrackedUrls`, no `skip`/`take`. The contradiction check and `ToFilter` live in `TrackedUrlsControllerBase`
+  (`ValidateFilters`), shared with the list and block rule controllers. 400 and 503 are decided before the first byte; 401/403 as the
+  other endpoints. 200 is `text/csv; charset=utf-8` with `Content-Disposition: attachment; filename="page-not-found-<yyyyMMdd-HHmmss>.csv"` (UTC).
+- **The body is written by an `IActionResult`, not by the action.** `TrackedUrlCsvResult` (`BackOffice/Export/`) writes on
+  `ExecuteResultAsync`: Umbraco's `DisableBrowserCacheAttribute` sets headers in `OnResultExecuting`, which runs after the action and
+  throws once a body byte has been written ("response headers cannot be modified because the response has already started"; found by the
+  API test with a real token, the unit tests with a mock would not show it). The result writes the BOM and the header and flushes them
+  **before** the first database read, then buffers 500 rows per write and flush. A cancelled request token (client gone) ends it quietly;
+  any other exception after the first byte is logged and calls `HttpContext.Abort()`, so the client sees a failed download, never a short
+  file. The unit tests execute the result (`ExecuteAsync` helper) and set `RequestAborted`.
+- **CSV format** (`TrackedUrlCsvWriter`, pure): UTF-8 with BOM, `;`, `\r\n`, header `Url;Relative path;Domain;Culture;Type;First seen
+  (UTC);Last seen (UTC);Hits` (English, fixed), `Type` Page/File, timestamps `yyyy-MM-dd HH:mm:ss` UTC with the kind set (never converted),
+  invariant formats whatever the thread culture. Excel reads that date format as a date and the ISO `T...Z` form as text, which is why the
+  spec deviates from ISO 8601. A text field starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` (every text column: tracked URLs,
+  domains and cultures come from requests), then a field with `;`, `"`, CR or LF is quoted with `"` doubled. The separator is not configurable
+  (maintainer decision: the users are in `;` regions).
+- **Reading the rows** (`ITrackedUrlExporter`, Core, **public**, `AddUnique`, default internal `TrackedUrlExporter`): `StreamAsync(TrackedUrlExportQuery,
+  ct)` returns `IAsyncEnumerable<TrackedUrl>`. It is public because Infrastructure only grants `InternalsVisibleTo` to the Integration tests and the
+  entry project, not to BackOffice; so it is an extension point with its own docs page and a compiled sample. The default resolves the context
+  factory per call, keeps one `DbContext` open for the whole enumeration and reads `AsNoTracking().AsAsyncEnumerable()` over the **same** filter and
+  order as the paged list (`TrackedUrlQueryComposition.Filter/Order`, extracted from `TrackedUrlQueryService`, so the two cannot drift). Rows can
+  change while the stream runs (the order ends on ascending `Id`, so nothing is repeated or skipped by ordering); the file is not a snapshot.
+- **Client** (`src/export/`): `Pnft.CollectionAction.TrackedUrl.Export` (kind `button`, only on `Pnft.Collection.TrackedUrl`, label
+  `#pageNotFoundTracker_exportAction`; Umbraco marks the button `collection-action:Pnft.CollectionAction.TrackedUrl.Export`). It reads
+  `getCurrentFilter()` (new, public, on `PnftPagedCollectionContextBase`) through `fromCollectionFilter` and `buildExportQuery` (the list query
+  without `skip` and `take`), calls the generated `exportTrackedUrls` with `parseAs: 'blob'` through `tryExecute` (it returns the whole result, so
+  `response.headers` is there for the file name) and saves the blob with an object URL and an anchor. **The anchor's click must not bubble:** the
+  backoffice router intercepts anchor clicks and `pushState`s the blob URL, which throws (found by the E2E run); `saveBlobAsFile` stops the
+  propagation, the browser's own download action still runs. A second click while running does nothing. Failures show a warning toast per
+  `classifyExportError` (503 unavailable, 401/403 forbidden, else failed); success a positive toast. After `npm run build` while a site runs, restart it
+  (new hashed chunks 404 otherwise).
+- **Tests.** Unit: `TrackedUrlCsvWriterTests`, `ExportTrackedUrlsControllerTests` (BackOffice.Tests). Integration: `Tracking/TrackedUrlExporterTests` (the
+  stream equals all pages of `GetPageAsync` for every sort column in both directions, search and filters, 3,000 rows, cancellation, empty; SQLite and SQL
+  Server), `ManagementApi/TrackedUrlsApiTests` `Export_*` (200 with BOM, header and row; search and order; 403, 401, 400) and the operation in the OpenAPI
+  test. Vitest: `buildExportQuery`, `fileNameFromDisposition`, `classifyExportError`, the export manifest. E2E `tests/export.spec.ts` (single-site, run-scoped
+  prefix, `FlushInterval=00:00:01`): the download has the BOM, the header and exactly the matching rows in hits order, and follows the list's sort.
+
 ## Retention (spec 8)
 
 Spec: `docs/superpowers/specs/2026-11-09-retention-cleanup-design.md`; plan `docs/superpowers/plans/2026-11-09-retention-cleanup.md`.
@@ -1249,7 +1300,7 @@ off-screen). Not built: a docs site, a generated API reference, translations.
   `.env.example` to `.env` (gitignored). The site must be running on single-site (44401) with
   `Umbraco__Community__PageNotFoundTracker__FlushInterval=00:00:01` (see Dashboard). Umbraco marks
   elements with `data-mark` (configured as `testIdAttribute`). `tests/not-found.spec.ts` covers spec 2,
-  `tests/redirect.spec.ts` the create redirect flow (spec 5), `tests/blocked.spec.ts` blocking (spec 6), `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
+  `tests/redirect.spec.ts` the create redirect flow (spec 5), `tests/blocked.spec.ts` blocking (spec 6), `tests/export.spec.ts` the export (spec 10), `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
   smoke test (placeholder dashboard in Settings) is gone with the placeholder.
 
 ## CI and repository settings

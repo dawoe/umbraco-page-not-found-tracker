@@ -56,6 +56,33 @@ What you may see instead of a list:
   **...** menu next to **Create redirect**. For a file row it is the only action and is shown as a button. See
   [Blocking](blocking.md).
 
+### Export
+
+**Export** (above the list) downloads the tracked URLs as a CSV file. It exports **everything** the current search,
+filters and sort match, not only the page you see: search for `/blog/`, filter on a domain, sort on **Last seen**, and
+the file holds every matching row in that order. With nothing filtered it holds all tracked URLs.
+
+The file is made for Excel, so a double-click opens it:
+
+- **Columns:** `Url`, `Relative path` (the URL without the domain's own path, handy to compare with a redirect list),
+  `Domain`, `Culture`, `Type` (`Page` or `File`), `First seen (UTC)`, `Last seen (UTC)` and `Hits`. The headings are
+  always English.
+- **Separator and encoding:** columns are separated by a semicolon (`;`) and the file is UTF-8 with a byte order mark,
+  so accents and other non-English characters show correctly. If Excel puts everything in one column, see
+  [Troubleshooting](troubleshooting.md#the-export-shows-one-column-in-excel).
+- **Dates** are in UTC, written as `2026-11-16 09:30:00`, which Excel reads as a date.
+- **Text that starts with `=`, `+`, `-` or `@`** gets a leading apostrophe. Visitors choose the URLs that get tracked,
+  and without it Excel could run such a URL as a formula.
+
+Good to know:
+
+- Anyone who may use the dashboard may export (see [Who can see them](#who-can-see-them)).
+- The rows are read while the file is written, so a hit that arrives meanwhile can be counted or not. It is not a
+  snapshot.
+- Excel holds at most 1,048,576 rows. A site that tracks more than that needs a filter, or another tool.
+- If the download breaks off (the server restarts, the connection drops) the browser reports a failed download instead
+  of saving a short file.
+
 ## Blocked URLs
 
 | Column | Meaning |

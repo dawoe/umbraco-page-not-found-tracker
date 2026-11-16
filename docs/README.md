@@ -27,7 +27,7 @@ It supports **Umbraco 17.x** on **.NET 10**, with SQLite or SQL Server as the Um
 
 ### For editors
 
-- [The dashboards](dashboards.md): the tracked URLs and the blocked URLs lists, and who can see them.
+- [The dashboards](dashboards.md): the tracked URLs and the blocked URLs lists, exporting the list, and who can see them.
 - [Redirects](redirects.md): turning a tracked URL into a redirect.
 - [Blocking](blocking.md): block patterns, status codes, safeguards and precedence.
 
@@ -38,6 +38,7 @@ It supports **Umbraco 17.x** on **.NET 10**, with SQLite or SQL Server as the Um
 - [Database providers](extending/database-providers.md): support another database.
 - [Redirect providers](extending/redirect-providers.md): send redirects to your own system, and replace the form.
 - [Dashboard actions](extending/dashboard-actions.md): add actions to the rows, and change who may use the dashboards.
+- [Tracked URL export](extending/tracked-url-export.md): read the exported rows from another store.
 
 ## Help and source
 
