@@ -1,4 +1,4 @@
-import type { DirectionModel, GetTrackedUrlsData } from '../api/index.js';
+import type { DirectionModel, ExportTrackedUrlsData, GetTrackedUrlsData } from '../api/index.js';
 import {
   PNFT_EMPTY,
   type PnftCollectionFilter,
@@ -59,6 +59,18 @@ export function buildPagedQuery<TOrderBy extends string>(
 /** Maps the tracked URL collection filter to the list query parameters (default order: hits descending). Pure. */
 export function buildListQuery(filter: Partial<PnftCollectionFilter>): PnftListQuery {
   return buildPagedQuery(filter, 'Hits');
+}
+
+/** The export query parameters of the Management API: the list query without paging. */
+export type PnftExportQuery = NonNullable<ExportTrackedUrlsData['query']>;
+
+/**
+ * Maps a collection filter to export query parameters: the same search, domain, culture and order as the list
+ * (default order hits descending), without `skip` and `take`, because the export covers every matching row. Pure.
+ */
+export function buildExportQuery(filter: Partial<PnftCollectionFilter>): PnftExportQuery {
+  const { skip: _skip, take: _take, ...query } = buildListQuery(filter);
+  return query;
 }
 
 /**
