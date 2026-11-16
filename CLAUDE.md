@@ -17,9 +17,11 @@ empty body, never tracked; a "Block" row action and a second "Blocked URLs" dash
 Implementer documentation (spec 7: the public `docs/` set, compiled samples and three CI checks) is built; see
 Documentation (spec 7) below. Retention (spec 8, issue #7: a daily distributed job removes tracked URLs not seen for
 `CleanupAfterDays`, default 365) is built; see Retention (spec 8) below. Editing block rules (spec 9, issue #11: the pattern,
-status code, domain and culture of an existing rule changed in place) is built; see Blocked URLs below. The CSV export of the tracked
-URLs (spec 10, issue #9: an "Export" action that downloads everything the current search, filters and sort match, streamed, for Excel)
-is built; see Export (spec 10) below. **A change to a setting, a contract, an extension point or documented behaviour must
+status code, domain and culture of an existing rule changed in place) is built; see Blocked URLs below. Deleting tracked
+URLs (spec 10, issue #8: a row action, "Delete selected" and "Delete all matching") is built; see Delete tracked URLs (spec 10)
+below. The CSV export of the tracked URLs (spec 11, issue #9: an "Export" action that downloads everything the current
+search, filters and sort match, streamed, for Excel) is built; see Export (spec 11) below. **A change to a setting, a
+contract, an extension point or documented behaviour must
 update the docs (and the quoted samples) in the same change.**
 
 Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spec before planning):
@@ -33,7 +35,8 @@ Specs (`docs/superpowers/specs/`, each has a matching GitHub issue; read the spe
 7. Documentation for implementers: `docs/superpowers/specs/2026-11-01-documentation-design.md` (done)
 8. Retention and clean-up of tracked URLs (issue #7): `docs/superpowers/specs/2026-11-09-retention-cleanup-design.md` (done)
 9. Edit block rules (issue #11): `docs/superpowers/specs/2026-11-09-edit-block-rules-design.md` (done)
-10. Export tracked URLs (issue #9): `docs/superpowers/specs/2026-11-16-export-tracked-urls-design.md` (done)
+10. Delete tracked URLs (issue #8): `docs/superpowers/specs/2026-11-10-delete-tracked-urls-design.md` (done)
+11. Export tracked URLs (issue #9): `docs/superpowers/specs/2026-11-16-export-tracked-urls-design.md` (done)
 
 Plans (`docs/superpowers/plans/`):
 
@@ -47,6 +50,7 @@ Plans (`docs/superpowers/plans/`):
 - Retention: `docs/superpowers/plans/2026-11-09-retention-cleanup.md`
 - Edit block rules: `docs/superpowers/plans/2026-11-09-edit-block-rules.md`
 - Export: `docs/superpowers/plans/2026-11-16-export-tracked-urls.md`
+- Delete tracked URLs: `docs/superpowers/plans/2026-11-10-delete-tracked-urls.md`
 
 Branches: `develop` is the default and integration branch, `main` is the release branch. There is
 no `v17/develop`. Feature branches are named `feature/<issue>-<slug>` and branch off `develop`.
@@ -633,7 +637,7 @@ A dashboard "Page not found" in the Content section (`/umbraco/section/content/d
 the tracked URLs: URL, domain, culture, type (page or file), first seen, last seen, hits; default order hits descending.
 Search by URL, domain and culture filters, page size 20 (default), 50 or 100, every column sortable. Not live: users
 reload (or change a filter) to see new data. Row actions: Create redirect (spec 5, see Redirects) and Block (spec 6, see
-Blocked URLs). A second tab "Blocked URLs" lists the block rules (spec 6). States: loading,
+Blocked URLs) and Delete (spec 10, see Delete tracked URLs). A second tab "Blocked URLs" lists the block rules (spec 6). States: loading,
 empty (nothing tracked), empty after filtering, error, and unavailable (503: database unsupported or migrations failed;
 final for the process, needs a fix and a restart).
 
@@ -727,7 +731,8 @@ refresh, Umbraco's interceptors), then `markClientConfigured()` (`client-ready.t
   the error and unavailable states, resets to page 1 on sort/search/filter/page size, page size 20 instead of 50,
   `setPageSize`, `requestFilterOptions`); `PnftTrackedUrlCollectionContext` is a thin subclass. The base overrides
   protected 17.8 internals and copies `collection-default.context.js` logic; the header `data-mark`s pass a Lit template
-  as the column name. **Re-check both on every Umbraco upgrade.** Its token `PNFT_TRACKED_URL_COLLECTION_CONTEXT` sits on
+  as the column name. The table base also relies on the 17.8 selection internals `_selectable` and `_isSelectableItem` of
+  `UmbCollectionViewElementBase` (spec 10). **Re-check all of these on every Umbraco upgrade.** Its token `PNFT_TRACKED_URL_COLLECTION_CONTEXT` sits on
   the framework alias with a discriminator: `pnftCollection === 'tracked-url'` (the block rule collection has the same
   shape, see Blocked URLs). `PNFT_PAGED_COLLECTION_CONTEXT` matches any package collection (`pnftCollection` is a string)
   for the shared toolbar pieces. The toolbar, states, search base, domain/culture filter and page size element are shared
@@ -773,7 +778,8 @@ label `#pageNotFoundTracker_block`, no condition, so on every row) with `src/blo
   dropdown (`umb-entity-actions-dropdown`) listing all of them. So on page rows Create redirect stays the inline button and
   Block is reached through the dropdown (E2E: click `umb-entity-actions-dropdown uui-button` in the row, then
   `entity-action:Pnft.EntityAction.TrackedUrl.Block`); file rows and query-string rows (no Create redirect) show only an
-  inline Block button. A further action changes this again: re-check the E2E selectors.
+  inline Block button. Spec 10 added Delete (weight -20) to every row's dropdown, so file rows now have the dropdown too
+  (Block stays their inline button). A further action changes this again: re-check the E2E selectors.
 - Capture the notification context and localization before opening a modal: the reload after success removes the row
   and with it the action's host. After a change call the collection context's `loadCollection()`.
 
@@ -1163,7 +1169,62 @@ afterwards):
 through the DOM), the edit modal's visual layout and its 404 ("rule no longer exists") text (the E2E tests drive the DOM and cover the 409 text), the `recordsRemoved: false` warning toast, the unblock 404/503/network texts (Vitest mapping only), the
 hostnames profile, and the upsert's duplicate-key retry (no seam to inject the race; untested).
 
-## Export (spec 10)
+## Delete tracked URLs (spec 10)
+
+Editors can delete tracked URLs: one row, the selected rows or everything the current search and filters match. A delete
+is a plain removal (no redirect, no block); the URL is tracked again from 1 when requested again. Spec:
+`docs/superpowers/specs/2026-11-10-delete-tracked-urls-design.md` (issue #8); plan
+`docs/superpowers/plans/2026-11-10-delete-tracked-urls.md`. Public owners: `docs/dashboards.md#deleting-urls` (editors),
+`docs/how-it-works.md#deleting-tracked-urls` (queue interaction), `docs/extending/dashboard-actions.md` (the remover).
+
+- **Remover** (`ITrackedUrlRemover`, Core, `AddUnique`, default `TrackedUrlRemover` in Infrastructure): `DeleteAsync(TrackedUrl)`
+  (spec 5), `DeleteAsync(IReadOnlyCollection<int> ids)` (distinct positive ids, chunks of `BatchSize` = 1000, returns the
+  count) and `DeleteMatchingAsync(TrackedUrlCriteria)` (batches of 1000 with the same filter as the list query; rows
+  deleted before a cancellation stay deleted). Every method runs under `ITrackingFlusher.RunExclusiveAsync` and
+  `TrackingQueue.Discard`s the queued, pending and in-flight hits of the deleted identities first. Adding the two methods
+  is a compile-time break for custom replacers: say so in the release notes. Same accepted multi-server limit as spec 5
+  (another server's queued hits can recreate a row).
+- **`TrackedUrlCriteria(Search, Domain, Culture)`** (Core, record): the list's filter (`TrackedUrlFilter` Any/Empty/Exactly),
+  shared with the query service.
+- **Endpoints** (BackOffice, base `/umbraco/pagenotfoundtracker/api/v1`, policy `PageNotFoundTracker.DashboardAccess`):
+
+| Operation ID | Route | Answers |
+|---|---|---|
+| `DeleteTrackedUrl` | `DELETE tracked-urls/{id:int}` | 200 `{ deleted: 1 }`; 404 problem when the row is gone; 503 |
+| `DeleteTrackedUrls` | `POST tracked-urls/delete` | body `{ ids }` (1 to 100 distinct ids, each 1 or more); 200 `{ deleted }`; 400; 503 |
+| `DeleteMatchingTrackedUrls` | `POST tracked-urls/delete-matching` | body `{ search, domain, noDomain, culture, noCulture, all }`; 200 `{ deleted }`; 400 for `{}` (no filter and `all` not set) and for `all: true` with a search or filter; 503 |
+
+  Deleting every tracked URL therefore needs `all: true` explicitly; the dashboard sends it only after the typed word.
+- **Client** (`src/delete/`): row action `Pnft.EntityAction.TrackedUrl.Delete` (weight **-20**, `delete.action.ts`, Umbraco's
+  `umb-confirm-modal`), bulk action `Pnft.EntityBulkAction.TrackedUrl.Delete` ("Delete selected", `delete-selected.bulk-action.ts`),
+  collection action `Pnft.CollectionAction.TrackedUrl.DeleteAll` (kind `button`, `delete-all.collection-action.ts`) opening modal
+  `Pnft.Modal.DeleteAll` (`delete-all-modal.element.ts`: the count, and without an active search or filter Confirm stays
+  disabled until `delete` is typed; the modal's confirm handler re-checks the typed word). `delete.service.ts` maps the API results (`criteriaFromFilter`
+  turns the list's filter into the request, `all: true` only for an empty filter). Rows have selection checkboxes (`allowSelection`
+  on the tracked table only; the block rule table has none); selection is limited to the current page, so at most one page (100) is sent.
+- **Umbraco 17.8 does not filter bulk actions or collection actions by entity type**: it renders every permitted
+  `entityBulkAction` in the footer, and rows become selectable as soon as any bulk action is permitted. Both extensions
+  therefore carry `Umb.Condition.CollectionAlias` = `Pnft.Collection.TrackedUrl`, which keeps them off the block rule list.
+- **Row dropdown.** Page rows: Create redirect inline, Block and Delete in the "..." dropdown; file and query-string rows: Block
+  inline, Delete in the dropdown. In E2E a row's dropdown is always opened first for Delete (and for Block on page rows).
+- **Data marks** (`src/delete/data-marks.ts`, `PNFT_DELETE_DATA_MARKS`): `pnft-delete-all-modal`, `-confirm`, `-cancel`,
+  `-confirm-input`, `-count`; `tests/delete.spec.ts` keeps a copy in its `MARKS`. Umbraco's own:
+  `entity-action:Pnft.EntityAction.TrackedUrl.Delete` and `collection-action:Pnft.CollectionAction.TrackedUrl.DeleteAll`. The bulk
+  action has no mark: it is an `umb-entity-bulk-action` in `umb-collection-selection-actions`. A row's selection checkbox has no size:
+  E2E selects a row by clicking its first `uui-table-cell`.
+- **Tests.** Unit: `BackOffice.Tests/DeleteTrackedUrlsControllersTests`, `Infrastructure.Tests/Redirects/TrackedUrlRedirectServiceTests`
+  (remover fake). Integration: `Tracking/TrackedUrlRemoverTests` (SQLite and SQL Server: by ids, matching, LIKE characters,
+  more than one batch, queue discard, cancellation), `ManagementApi/TrackedUrlsApiTests` (the three endpoints, 401/403/400/404).
+  Vitest: `delete.service`, `delete-all`, delete `manifests`. E2E `tests/delete.spec.ts` (single-site, `FlushInterval=00:00:01`,
+  run-scoped prefix `pnft-e2e-del-<run>`): `Delete_removes_a_single_row` (tracked again from 1), `Delete_selected_removes_the_selected_rows_only`,
+  `Delete_all_matching_a_search_removes_only_those_rows`, `Delete_all_without_a_filter_needs_the_typed_word` (never confirms an
+  unfiltered delete: it would wipe other runs' rows); afterAll deletes the run's leftovers through the filtered Delete all.
+- **Not verified:** the spec's manual check (multi-site-aliases: filter by domain, then delete matching) was not run; the
+  domain filter path is covered by integration and unit tests only. The row action's manual browser check was skipped (covered
+  by E2E). The `notFound` result branches in the bulk action and the delete-all action are unreachable today (their
+  endpoints return no 404).
+
+## Export (spec 11)
 
 An "Export" collection action on the tracked URLs dashboard downloads every row the current search, filters and sort match as
 a CSV for Excel. Spec: `docs/superpowers/specs/2026-11-16-export-tracked-urls-design.md`; plan
@@ -1192,7 +1253,7 @@ seam: `docs/extending/tracked-url-export.md`.
   ct)` returns `IAsyncEnumerable<TrackedUrl>`. It is public because Infrastructure only grants `InternalsVisibleTo` to the Integration tests and the
   entry project, not to BackOffice; so it is an extension point with its own docs page and a compiled sample. The default resolves the context
   factory per call, keeps one `DbContext` open for the whole enumeration and reads `AsNoTracking().AsAsyncEnumerable()` over the **same** filter and
-  order as the paged list (`TrackedUrlQueryComposition.Filter/Order`, extracted from `TrackedUrlQueryService`, so the two cannot drift). Rows can
+  order as the paged list (`TrackedUrlFilters.Apply`, shared with delete by filter, and `TrackedUrlOrdering.Order`, both used by `TrackedUrlQueryService`, so the two cannot drift). Rows can
   change while the stream runs (the order ends on ascending `Id`, so nothing is repeated or skipped by ordering); the file is not a snapshot.
 - **Client** (`src/export/`): `Pnft.CollectionAction.TrackedUrl.Export` (kind `button`, only on `Pnft.Collection.TrackedUrl`, label
   `#pageNotFoundTracker_exportAction`; Umbraco marks the button `collection-action:Pnft.CollectionAction.TrackedUrl.Export`). It reads
@@ -1307,7 +1368,7 @@ off-screen). Not built: a docs site, a generated API reference, translations.
   `.env.example` to `.env` (gitignored). The site must be running on single-site (44401) with
   `Umbraco__Community__PageNotFoundTracker__FlushInterval=00:00:01` (see Dashboard). Umbraco marks
   elements with `data-mark` (configured as `testIdAttribute`). `tests/not-found.spec.ts` covers spec 2,
-  `tests/redirect.spec.ts` the create redirect flow (spec 5), `tests/blocked.spec.ts` blocking (spec 6), `tests/export.spec.ts` the export (spec 10), `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
+  `tests/redirect.spec.ts` the create redirect flow (spec 5), `tests/blocked.spec.ts` blocking (spec 6), `tests/export.spec.ts` the export (spec 11), `tests/dashboard.spec.ts` the dashboard at `/umbraco/section/content/dashboard/page-not-found-tracker`. The spec 1
   smoke test (placeholder dashboard in Settings) is gone with the placeholder.
 
 ## CI and repository settings

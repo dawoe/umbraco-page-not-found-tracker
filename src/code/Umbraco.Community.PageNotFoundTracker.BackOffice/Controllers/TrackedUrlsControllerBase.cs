@@ -51,16 +51,6 @@ public abstract class TrackedUrlsControllerBase : ManagementApiControllerBase
     }
 
     /// <summary>
-    /// Maps a value and its "none" flag to a filter: the empty filter when the flag is set, the exact value when there
-    /// is one, otherwise no filter.
-    /// </summary>
-    /// <param name="value">The value, or null.</param>
-    /// <param name="empty">Whether rows without a value are asked for.</param>
-    /// <returns>The filter.</returns>
-    protected static TrackedUrlFilter ToFilter(string? value, bool empty) =>
-        empty ? TrackedUrlFilter.Empty : value is null ? TrackedUrlFilter.Any : TrackedUrlFilter.Exactly(value);
-
-    /// <summary>
     /// Rejects a domain or culture filter that contradicts itself (a value together with its "none" flag).
     /// </summary>
     /// <param name="domain">The domain, or null.</param>
@@ -97,4 +87,13 @@ public abstract class TrackedUrlsControllerBase : ManagementApiControllerBase
             Status = StatusCodes.Status400BadRequest,
             Type = "Error",
         });
+
+    /// <summary>
+    /// Maps a filter value and its "empty" switch to a <see cref="TrackedUrlFilter"/>.
+    /// </summary>
+    /// <param name="value">The exact value, or <c>null</c> for no value filter.</param>
+    /// <param name="empty">Whether rows without a value are selected.</param>
+    /// <returns>The filter.</returns>
+    protected static TrackedUrlFilter ToFilter(string? value, bool empty) =>
+        empty ? TrackedUrlFilter.Empty : value is null ? TrackedUrlFilter.Any : TrackedUrlFilter.Exactly(value);
 }

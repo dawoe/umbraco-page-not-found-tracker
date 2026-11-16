@@ -27,8 +27,8 @@ internal sealed class TrackedUrlExporter(IServiceProvider serviceProvider) : ITr
             .GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>()
             .CreateDbContextAsync(cancellationToken);
 
-        IQueryable<TrackedUrl> rows = TrackedUrlQueryComposition.Order(
-            TrackedUrlQueryComposition.Filter(dbContext.TrackedUrls.AsNoTracking(), query.Search, query.Domain, query.Culture),
+        IQueryable<TrackedUrl> rows = TrackedUrlOrdering.Order(
+            TrackedUrlFilters.Apply(dbContext.TrackedUrls.AsNoTracking(), query.Search, query.Domain, query.Culture),
             query.SortColumn,
             query.Descending);
 

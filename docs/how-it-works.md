@@ -112,6 +112,21 @@ more than `CleanupAfterDays` days ago (365 by default). It is on by default; `Cl
 - **The log says what it did.** A run that removed URLs logs `Removed <count> tracked 404 URLs last seen before
   <date>.` at information level. A failure is logged as an error and retried at the next daily run.
 
+## Deleting tracked URLs
+
+Editors can delete tracked URLs in the dashboard (see [Dashboards](dashboards.md#deleting-urls)). A delete is a plain
+removal of rows, with these effects:
+
+- **Hits still waiting in memory for a deleted URL are dropped**, so the next flush cannot write the row back. The
+  delete and the flush never run at the same moment on one server.
+- **Hits that arrive after the delete start a new row** at one hit. Nothing remembers that the URL was deleted.
+- **With several servers**, hits that another server still holds in its queue for the deleted URL can bring the row
+  back when that server flushes. It shows up as a new row; delete it again if needed.
+- **A large delete runs in batches of 1000** rows, each a short statement, so tracking and the dashboard keep working
+  while it runs. If it is stopped half-way, the batches already done stay deleted.
+
+To stop a URL for good, block it instead (see [Blocking](blocking.md)).
+
 ## How redirects and blocks relate
 
 - **Create a redirect** for a tracked page URL: Umbraco gets a redirect and the tracked row is removed. Visitors

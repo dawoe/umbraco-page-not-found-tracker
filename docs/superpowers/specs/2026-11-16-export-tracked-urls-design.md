@@ -1,4 +1,4 @@
-# Export tracked URLs: design (spec 10, issue #9)
+# Export tracked URLs: design (spec 11, issue #9)
 
 ## Intent and why
 
@@ -120,7 +120,7 @@ collection, so nobody who cannot see the dashboard sees the button.
 - `docs/troubleshooting.md`: one entry if Excel shows one column (a regional list separator of `,`; Excel's "From
   Text/CSV" import).
 - If the exporter seam turns out public: a page under `docs/extending/` and a link from its README and `docs/README.md`.
-- `CLAUDE.md`: add spec 10 and its plan to the lists, an "Export (spec 10)" section (endpoint, format, tests, manual
+- `CLAUDE.md`: add spec 11 and its plan to the lists, an "Export (spec 11)" section (endpoint, format, tests, manual
   checks), the new files in the solution layout, and the new data-marks.
 - Any quoted sample is updated with its compiled copy; `check-doc-samples.ps1` and `check-doc-links.ps1` pass.
 

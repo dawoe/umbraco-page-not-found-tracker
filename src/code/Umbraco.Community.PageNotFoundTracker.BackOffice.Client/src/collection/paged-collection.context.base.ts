@@ -18,7 +18,8 @@ export interface PnftFilterOptionsRepository {
  *   context drops;
  * - search, filter, sort and page size changes resetting to page 1 (the default keeps `skip`);
  * - the page size choice (20, 50, 100; default 20 instead of the framework's 50);
- * - the filter choices from the repository.
+ * - the filter choices from the repository;
+ * - the selection cleared on every load (selection covers the current page only).
  *
  * Each subclass names itself with `pnftCollection`, which the context tokens use as discriminator, so a piece of one
  * collection never binds to the other. The shared toolbar pieces (filters, page size) use `PNFT_PAGED_COLLECTION_CONTEXT`.
@@ -89,8 +90,8 @@ export abstract class PnftPagedCollectionContextBase<
   }
 
   /**
-   * Requests the current page. Same as the default context, but it keeps the error (and clears the rows
-   * on an error, so the error state shows instead of stale rows) and ignores a response that a newer
+   * Requests the current page. Same as the default context, but it clears the selection, keeps the error (and clears
+   * the rows on an error, so the error state shows instead of stale rows) and ignores a response that a newer
    * request has overtaken.
    */
   protected override async _requestCollection(): Promise<void> {
@@ -105,6 +106,9 @@ export abstract class PnftPagedCollectionContextBase<
     }
 
     const requestNumber = ++this.#requestNumber;
+    // Selection is limited to the page on screen: every load (reload after an action, page, sort, filter or page size
+    // change) starts without one, so a bulk action never acts on rows the editor no longer sees.
+    this.selection.clearSelection();
     this._loading.setValue(true);
 
     const { data, error } = await this._repository.requestCollection(this._filter.getValue());

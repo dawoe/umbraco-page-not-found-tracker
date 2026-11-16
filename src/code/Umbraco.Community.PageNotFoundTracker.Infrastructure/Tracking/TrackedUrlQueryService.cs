@@ -31,10 +31,10 @@ internal sealed class TrackedUrlQueryService(IServiceProvider serviceProvider) :
         int take = Math.Clamp(query.Take, 1, MaxTake);
 
         await using PageNotFoundTrackerDbContext dbContext = await this.CreateContextAsync(cancellationToken);
-        IQueryable<TrackedUrl> filtered = TrackedUrlQueryComposition.Filter(dbContext.TrackedUrls.AsNoTracking(), query.Search, query.Domain, query.Culture);
+        IQueryable<TrackedUrl> filtered = TrackedUrlFilters.Apply(dbContext.TrackedUrls.AsNoTracking(), query.Search, query.Domain, query.Culture);
 
         long total = await filtered.LongCountAsync(cancellationToken);
-        List<TrackedUrl> items = await TrackedUrlQueryComposition.Order(filtered, query.SortColumn, query.Descending)
+        List<TrackedUrl> items = await TrackedUrlOrdering.Order(filtered, query.SortColumn, query.Descending)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);

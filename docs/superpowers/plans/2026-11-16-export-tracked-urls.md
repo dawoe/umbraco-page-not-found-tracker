@@ -241,7 +241,7 @@ git commit -m "test: cover the tracked URL export end to end"
 - [ ] **Step 1: `docs/dashboards.md`**: add an "Export" section under "Page not found": what is exported (everything matching the current search, domain, culture and sort, not only the page shown), the file (UTF-8 with BOM and `;` so Excel opens it by double-click, the eight columns, UTC dates `yyyy-MM-dd HH:mm:ss`, `Type` is Page or File), who can use it (the dashboard access rule), Excel's 1,048,576-row limit, that the file is not a snapshot if hits arrive meanwhile, and that a download that breaks off fails instead of ending short.
 - [ ] **Step 2: `docs/troubleshooting.md`**: add "The export shows one column in Excel": cause (a `,` regional list separator), fix (Excel Data > From Text/CSV with the delimiter set to semicolon, or change the regional setting).
 - [ ] **Step 3: Extension page** `docs/extending/tracked-url-export.md`: the `ITrackedUrlExporter` contract (lazy streaming, no buffering, order ends in ascending `Id`, replace with `AddUnique` in a composer after `PageNotFoundTrackerComposer`) with a quoted compiled sample; link it from `docs/extending/README.md` and `docs/README.md`. Note that the CSV format itself is fixed.
-- [ ] **Step 4: `CLAUDE.md`**: add spec 10 (done) and its plan to the lists, an "Export (spec 10)" section (endpoint, format, seam and why it is public, client files, data-marks, tests, manual checks from Task 7), the new files in the solution layout, and the new E2E spec in the Tests section.
+- [ ] **Step 4: `CLAUDE.md`**: add spec 11 (done) and its plan to the lists, an "Export (spec 11)" section (endpoint, format, seam and why it is public, client files, data-marks, tests, manual checks from Task 7), the new files in the solution layout, and the new E2E spec in the Tests section.
 - [ ] **Step 5: Run the checks and commit**
 
 Run (repo root): `pwsh .github/scripts/check-doc-samples.ps1`, `pwsh .github/scripts/check-doc-links.ps1`, `dotnet test src/test/Umbraco.Community.PageNotFoundTracker.Infrastructure.Tests --filter ConfigurationDocsTests`, `dotnet build src` (the sample compiles, zero warnings).
@@ -256,7 +256,7 @@ git commit -m "docs: document the tracked URL export"
 
 ### Task 7: Whole-branch verification
 
-**Files:** none (results are recorded in `CLAUDE.md` under "Export (spec 10)").
+**Files:** none (results are recorded in `CLAUDE.md` under "Export (spec 11)").
 
 - [ ] **Step 1: Full automated run.** Client: `npm ci`, `npm test`, `npm run build`. From `src/`: `dotnet build` (zero warnings), `dotnet test` (PowerShell with `PNFT_SQLSERVER_CONNECTION` set so the SQL Server cases run), `pwsh ../scripts/check-pending-model-changes.ps1`, pack and `pwsh .github/scripts/check-package.ps1` (no model change expected, so no migration).
 - [ ] **Step 2: Large export check on `single-site`.** Insert about 100,000 tracked rows with a `node:sqlite` script while the site is stopped, start the site, call the endpoint with a client-credentials token and `curl -k --output`, and watch the process working set: it must not grow with the file size. Then restore the database and `appsettings.json` (`git checkout --`, see CLAUDE.md).

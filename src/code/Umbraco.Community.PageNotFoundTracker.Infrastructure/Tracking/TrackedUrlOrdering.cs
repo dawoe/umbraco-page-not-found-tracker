@@ -1,58 +1,16 @@
 // Copyright (c) Dave Woestenborghs and contributors. Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System.Linq.Expressions;
-using Microsoft.EntityFrameworkCore;
 using Umbraco.Community.PageNotFoundTracker.Core.Tracking;
 
 namespace Umbraco.Community.PageNotFoundTracker.Infrastructure.Tracking;
 
 /// <summary>
-/// The filter and the order of the tracked URL list, shared by the paged query and the export so both select the same
-/// rows in the same order.
+/// The order of the tracked URL list, shared by the paged query and the export so both return the same rows in the same
+/// order (the filter is shared the same way, in <see cref="TrackedUrlFilters"/>).
 /// </summary>
-internal static class TrackedUrlQueryComposition
+internal static class TrackedUrlOrdering
 {
-    /// <summary>
-    /// Applies the search and the domain and culture filters.
-    /// </summary>
-    /// <param name="rows">The rows.</param>
-    /// <param name="search">The search term, or null.</param>
-    /// <param name="domain">The domain filter.</param>
-    /// <param name="culture">The culture filter.</param>
-    /// <returns>The filtered rows.</returns>
-    internal static IQueryable<TrackedUrl> Filter(IQueryable<TrackedUrl> rows, string? search, TrackedUrlFilter domain, TrackedUrlFilter culture)
-    {
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            string pattern = LikePattern.Contains(search);
-            rows = rows.Where(r => EF.Functions.Like(r.Url, pattern, "\\"));
-        }
-
-        switch (domain.Kind)
-        {
-            case TrackedUrlFilterKind.Empty:
-                rows = rows.Where(r => r.Domain == string.Empty);
-                break;
-            case TrackedUrlFilterKind.Exactly:
-                string domainValue = domain.Value ?? string.Empty;
-                rows = rows.Where(r => r.Domain == domainValue);
-                break;
-        }
-
-        switch (culture.Kind)
-        {
-            case TrackedUrlFilterKind.Empty:
-                rows = rows.Where(r => r.Culture == string.Empty);
-                break;
-            case TrackedUrlFilterKind.Exactly:
-                string cultureValue = culture.Value ?? string.Empty;
-                rows = rows.Where(r => r.Culture == cultureValue);
-                break;
-        }
-
-        return rows;
-    }
-
     /// <summary>
     /// Orders the rows by a column; the final ascending id keeps the order total.
     /// </summary>

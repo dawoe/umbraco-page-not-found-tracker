@@ -39,6 +39,10 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
 
     private const string AccessUrl = ApiBase + "/access";
 
+    private const string DeleteUrl = ListUrl + "/delete";
+
+    private const string DeleteMatchingUrl = ListUrl + "/delete-matching";
+
     private const string OpenApiDocumentUrl = "/umbraco/swagger/page-not-found-tracker-management-api/swagger.json";
 
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(60);
@@ -272,6 +276,125 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
     }
 
     /// <summary>
+    /// An anonymous caller gets 401 from the three delete endpoints.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Delete_Anonymous_Returns401()
+    {
+        using HttpResponseMessage single = await this.Client.DeleteAsync(new Uri($"{ListUrl}/1", UriKind.Relative));
+        using HttpResponseMessage many = await this.PostJsonAsync(this.Client, DeleteUrl, "{\"ids\":[1]}");
+        using HttpResponseMessage matching = await this.PostJsonAsync(this.Client, DeleteMatchingUrl, "{\"all\":true}");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(single.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+            Assert.That(many.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+            Assert.That(matching.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+        });
+    }
+
+    /// <summary>
+    /// A user whose only group is not in the setting gets 403 from the three delete endpoints.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Delete_GroupOutsideSetting_Returns403()
+    {
+        await this.AuthenticateWithSectionsAsync("pnftDeleteOutside", Constants.Applications.Content);
+
+        using HttpResponseMessage single = await this.Client.DeleteAsync(new Uri($"{ListUrl}/1", UriKind.Relative));
+        using HttpResponseMessage many = await this.PostJsonAsync(this.Client, DeleteUrl, "{\"ids\":[1]}");
+        using HttpResponseMessage matching = await this.PostJsonAsync(this.Client, DeleteMatchingUrl, "{\"all\":true}");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(single.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(many.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            Assert.That(matching.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+        });
+    }
+
+    /// <summary>
+    /// Deleting one row removes it; an unknown id is a 404.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task DeleteTrackedUrl_RemovesTheRow_UnknownIdIs404()
+    {
+        await this.SeedAsync();
+        await this.AuthenticateClientAsync(this.Client, "delete1-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+        int fileId = await this.GetIdAsync(u => u.IsFile);
+
+        using HttpResponseMessage unknown = await this.Client.DeleteAsync(new Uri($"{ListUrl}/999999", UriKind.Relative));
+        using HttpResponseMessage ok = await this.Client.DeleteAsync(new Uri($"{ListUrl}/{fileId}", UriKind.Relative));
+        string body = await ok.Content.ReadAsStringAsync();
+
+        Assert.That(ok.StatusCode, Is.EqualTo(HttpStatusCode.OK), body);
+        Assert.Multiple(() =>
+        {
+            Assert.That(unknown.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+            Assert.That(JsonNode.Parse(body)!["deleted"]!.GetValue<int>(), Is.EqualTo(1));
+        });
+        Assert.That(await this.CountAsync(), Is.EqualTo(1));
+    }
+
+    /// <summary>
+    /// Deleting by ids removes those rows and counts them once; no ids is a 400.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task DeleteTrackedUrls_RemovesTheRows_EmptyIdsIs400()
+    {
+        await this.SeedAsync();
+        await this.AuthenticateClientAsync(this.Client, "deleten-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+        int pageId = await this.GetIdAsync(u => !u.IsFile);
+
+        using HttpResponseMessage empty = await this.PostJsonAsync(this.Client, DeleteUrl, "{\"ids\":[]}");
+        using HttpResponseMessage ok = await this.PostJsonAsync(this.Client, DeleteUrl, $"{{\"ids\":[{pageId},{pageId},999999]}}");
+        string body = await ok.Content.ReadAsStringAsync();
+
+        Assert.That(ok.StatusCode, Is.EqualTo(HttpStatusCode.OK), body);
+        Assert.Multiple(() =>
+        {
+            Assert.That(empty.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(JsonNode.Parse(body)!["deleted"]!.GetValue<int>(), Is.EqualTo(1));
+        });
+        Assert.That(await this.CountAsync(), Is.EqualTo(1));
+    }
+
+    /// <summary>
+    /// Deleting by filter removes only the matching rows; an empty body is a 400 and removes nothing; <c>all</c> removes everything.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task DeleteMatching_RemovesMatchingRows_NoFilterIs400_AllRemovesEverything()
+    {
+        await this.SeedAsync();
+        await this.AuthenticateClientAsync(this.Client, "deletem-editor@umbraco.com", UserPassword, Constants.Security.EditorGroupKey);
+
+        using HttpResponseMessage none = await this.PostJsonAsync(this.Client, DeleteMatchingUrl, "{}");
+        int afterNone = await this.CountAsync();
+        using HttpResponseMessage filtered = await this.PostJsonAsync(this.Client, DeleteMatchingUrl, "{\"search\":\"popular\"}");
+        string filteredBody = await filtered.Content.ReadAsStringAsync();
+        int afterFiltered = await this.CountAsync();
+        using HttpResponseMessage all = await this.PostJsonAsync(this.Client, DeleteMatchingUrl, "{\"all\":true}");
+        string allBody = await all.Content.ReadAsStringAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(none.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(afterNone, Is.EqualTo(2));
+            Assert.That(filtered.StatusCode, Is.EqualTo(HttpStatusCode.OK), filteredBody);
+            Assert.That(JsonNode.Parse(filteredBody)!["deleted"]!.GetValue<int>(), Is.EqualTo(1));
+            Assert.That(afterFiltered, Is.EqualTo(1));
+            Assert.That(all.StatusCode, Is.EqualTo(HttpStatusCode.OK), allBody);
+            Assert.That(JsonNode.Parse(allBody)!["deleted"]!.GetValue<int>(), Is.EqualTo(1));
+        });
+        Assert.That(await this.CountAsync(), Is.EqualTo(0));
+    }
+
+    /// <summary>
     /// A user in an allowed group gets the CSV: UTF-8 with a byte order mark, the header and the seeded rows.
     /// </summary>
     /// <returns>A task.</returns>
@@ -363,6 +486,7 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
+
     /// <summary>
     /// The package's OpenAPI document holds the operations with stable IDs.
     /// </summary>
@@ -388,6 +512,9 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
                 (ExportUrl, "ExportTrackedUrls"),
                 (AccessUrl, "GetDashboardAccess"),
                 (ListUrl + "/{id}/redirect", "CreateTrackedUrlRedirect"),
+                (ListUrl + "/{id}", "DeleteTrackedUrl"),
+                (DeleteUrl, "DeleteTrackedUrls"),
+                (DeleteMatchingUrl, "DeleteMatchingTrackedUrls"),
                 (ApiBase + "/block-rules", "GetBlockRules"),
                 (ApiBase + "/block-rules", "CreateBlockRule"),
                 (ApiBase + "/block-rules/{id}", "DeleteBlockRule"),
@@ -426,6 +553,26 @@ internal sealed class TrackedUrlsApiTests : ManagementApiTest<GetTrackedUrlsCont
     {
         using var content = new StringContent("{}", Encoding.UTF8, "application/json");
         return await client.PostAsync(new Uri($"{ListUrl}/{id}/redirect", UriKind.Relative), content);
+    }
+
+    private async Task<HttpResponseMessage> PostJsonAsync(HttpClient client, string url, string json)
+    {
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        return await client.PostAsync(new Uri(url, UriKind.Relative), content);
+    }
+
+    private async Task<int> GetIdAsync(Expression<Func<TrackedUrl, bool>> predicate)
+    {
+        var factory = this.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>();
+        await using PageNotFoundTrackerDbContext db = await factory.CreateDbContextAsync();
+        return await db.TrackedUrls.Where(predicate).Select(u => u.Id).SingleAsync();
+    }
+
+    private async Task<int> CountAsync()
+    {
+        var factory = this.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>();
+        await using PageNotFoundTrackerDbContext db = await factory.CreateDbContextAsync();
+        return await db.TrackedUrls.CountAsync();
     }
 
     private HttpClient CreateClient() =>
