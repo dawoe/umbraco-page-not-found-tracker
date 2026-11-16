@@ -34,6 +34,10 @@ export function saveBlobAsFile(blob: Blob, fileName: string): void {
     anchor.href = url;
     anchor.download = fileName;
     anchor.style.display = 'none';
+
+    // The backoffice router listens for clicks on anchors and would push the blob URL into the history (which fails).
+    // Stopping the click here keeps it from the router; the browser's own download action still runs.
+    anchor.addEventListener('click', (event) => event.stopPropagation(), { once: true });
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
