@@ -31,10 +31,10 @@ internal sealed class TrackedUrlQueryService(IServiceProvider serviceProvider) :
         int take = Math.Clamp(query.Take, 1, MaxTake);
 
         await using PageNotFoundTrackerDbContext dbContext = await this.CreateContextAsync(cancellationToken);
-        IQueryable<TrackedUrl> filtered = Filter(dbContext.TrackedUrls.AsNoTracking(), query);
+        IQueryable<TrackedUrl> filtered = TrackedUrlQueryComposition.Filter(dbContext.TrackedUrls.AsNoTracking(), query.Search, query.Domain, query.Culture);
 
         long total = await filtered.LongCountAsync(cancellationToken);
-        List<TrackedUrl> items = await Order(filtered, query.SortColumn, query.Descending)
+        List<TrackedUrl> items = await TrackedUrlQueryComposition.Order(filtered, query.SortColumn, query.Descending)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);
@@ -68,58 +68,4 @@ internal sealed class TrackedUrlQueryService(IServiceProvider serviceProvider) :
 
     private async Task<PageNotFoundTrackerDbContext> CreateContextAsync(CancellationToken cancellationToken) =>
         await serviceProvider.GetRequiredService<IDbContextFactory<PageNotFoundTrackerDbContext>>().CreateDbContextAsync(cancellationToken);
-
-    private static IQueryable<TrackedUrl> Filter(IQueryable<TrackedUrl> rows, TrackedUrlQuery query)
-    {
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            string pattern = LikePattern.Contains(query.Search);
-            rows = rows.Where(r => EF.Functions.Like(r.Url, pattern, "\\"));
-        }
-
-        switch (query.Domain.Kind)
-        {
-            case TrackedUrlFilterKind.Empty:
-                rows = rows.Where(r => r.Domain == string.Empty);
-                break;
-            case TrackedUrlFilterKind.Exactly:
-                string domain = query.Domain.Value ?? string.Empty;
-                rows = rows.Where(r => r.Domain == domain);
-                break;
-        }
-
-        switch (query.Culture.Kind)
-        {
-            case TrackedUrlFilterKind.Empty:
-                rows = rows.Where(r => r.Culture == string.Empty);
-                break;
-            case TrackedUrlFilterKind.Exactly:
-                string culture = query.Culture.Value ?? string.Empty;
-                rows = rows.Where(r => r.Culture == culture);
-                break;
-        }
-
-        return rows;
-    }
-
-    private static IOrderedQueryable<TrackedUrl> Order(IQueryable<TrackedUrl> rows, TrackedUrlSortColumn column, bool descending)
-    {
-        // The final ascending Id keeps the order total, so paging neither repeats nor skips rows.
-        return column switch
-        {
-            TrackedUrlSortColumn.Url => OrderBy(rows, r => r.Url, descending),
-            TrackedUrlSortColumn.Domain => OrderBy(rows, r => r.Domain, descending),
-            TrackedUrlSortColumn.Culture => OrderBy(rows, r => r.Culture, descending),
-            TrackedUrlSortColumn.IsFile => OrderBy(rows, r => r.IsFile, descending),
-            TrackedUrlSortColumn.FirstSeen => OrderBy(rows, r => r.FirstSeen, descending),
-            TrackedUrlSortColumn.LastSeen => OrderBy(rows, r => r.LastSeen, descending),
-            _ => OrderBy(rows, r => r.HitCount, descending),
-        };
-    }
-
-    private static IOrderedQueryable<TrackedUrl> OrderBy<TKey>(
-        IQueryable<TrackedUrl> rows,
-        System.Linq.Expressions.Expression<Func<TrackedUrl, TKey>> key,
-        bool descending) =>
-        (descending ? rows.OrderByDescending(key) : rows.OrderBy(key)).ThenBy(r => r.Id);
 }
