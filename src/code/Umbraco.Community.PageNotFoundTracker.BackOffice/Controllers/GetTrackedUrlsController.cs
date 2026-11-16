@@ -69,14 +69,9 @@ public sealed class GetTrackedUrlsController(ITrackedUrlQueryService queryServic
             return this.InvalidRequest("Invalid take", $"Take must be between 1 and {MaxTake}.");
         }
 
-        if (domain is not null && noDomain)
+        if (this.ValidateFilters(domain, noDomain, culture, noCulture) is { } contradiction)
         {
-            return this.InvalidRequest("Contradicting domain filter", "Use either domain or noDomain, not both.");
-        }
-
-        if (culture is not null && noCulture)
-        {
-            return this.InvalidRequest("Contradicting culture filter", "Use either culture or noCulture, not both.");
+            return contradiction;
         }
 
         if (await this.EnsurePersistenceAvailableAsync(persistenceState, cancellationToken) is { } unavailable)

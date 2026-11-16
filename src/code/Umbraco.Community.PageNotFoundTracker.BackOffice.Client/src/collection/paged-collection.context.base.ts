@@ -43,6 +43,11 @@ export abstract class PnftPagedCollectionContextBase<
 
   #requestNumber = 0;
 
+  /** The filter the list currently shows (search, domain, culture, sort and paging); the export follows it. */
+  getCurrentFilter(): TFilter {
+    return this._filter.getValue() as TFilter;
+  }
+
   constructor(host: UmbControllerHost, defaultViewAlias: string, defaultFilter: Partial<TFilter>) {
     super(host, defaultViewAlias, defaultFilter);
     this.setConfig({});

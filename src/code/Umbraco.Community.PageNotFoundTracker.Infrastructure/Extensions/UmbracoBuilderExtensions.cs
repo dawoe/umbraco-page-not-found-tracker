@@ -48,6 +48,7 @@ internal static class UmbracoBuilderExtensions
         builder.Services.AddUnique<IDashboardAccess, DashboardAccess>();
 
         builder.Services.AddUnique<ITrackedUrlQueryService, TrackedUrlQueryService>();
+        builder.Services.AddUnique<ITrackedUrlExporter, TrackedUrlExporter>();
         builder.Services.AddUnique<ITrackedUrlRemover, TrackedUrlRemover>();
         builder.Services.AddUnique<ITrackedUrlRedirectService, TrackedUrlRedirectService>();
         builder.Services.AddUnique<IRedirectProvider, UmbracoRedirectProvider>();

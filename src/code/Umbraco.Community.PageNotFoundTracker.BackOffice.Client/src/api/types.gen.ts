@@ -536,6 +536,51 @@ export type DeleteMatchingTrackedUrlsResponses = {
 
 export type DeleteMatchingTrackedUrlsResponse = DeleteMatchingTrackedUrlsResponses[keyof DeleteMatchingTrackedUrlsResponses];
 
+export type ExportTrackedUrlsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        orderBy?: TrackedUrlSortColumn;
+        direction?: DirectionModel;
+        search?: string;
+        domain?: string;
+        noDomain?: boolean;
+        culture?: string;
+        noCulture?: boolean;
+    };
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/export';
+};
+
+export type ExportTrackedUrlsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * The resource is protected and requires an authentication token
+     */
+    401: unknown;
+    /**
+     * The authenticated user does not have access to this resource
+     */
+    403: unknown;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type ExportTrackedUrlsError = ExportTrackedUrlsErrors[keyof ExportTrackedUrlsErrors];
+
+export type ExportTrackedUrlsResponses = {
+    /**
+     * OK
+     */
+    200: Blob | File;
+};
+
+export type ExportTrackedUrlsResponse = ExportTrackedUrlsResponses[keyof ExportTrackedUrlsResponses];
+
 export type GetTrackedUrlFilterOptionsData = {
     body?: never;
     path?: never;

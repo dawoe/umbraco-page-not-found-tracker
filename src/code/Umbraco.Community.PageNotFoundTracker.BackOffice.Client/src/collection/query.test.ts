@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildListQuery, fromCollectionFilter } from './query';
+import { buildExportQuery, buildListQuery, fromCollectionFilter } from './query';
 import { PNFT_EMPTY } from './types';
 
 describe('buildListQuery', () => {
@@ -118,5 +118,37 @@ describe('fromCollectionFilter', () => {
       orderBy: 'Hits',
       direction: 'Descending',
     });
+  });
+});
+
+describe('buildExportQuery', () => {
+  it('buildExportQuery_DefaultsToHitsDescendingWithoutPaging', () => {
+    expect(buildExportQuery({})).toStrictEqual({ orderBy: 'Hits', direction: 'Descending' });
+  });
+
+  it('buildExportQuery_IgnoresSkipAndTake', () => {
+    const query = buildExportQuery({ skip: 40, take: 50, orderBy: 'LastSeen', direction: 'Ascending' });
+
+    expect(query).toStrictEqual({ orderBy: 'LastSeen', direction: 'Ascending' });
+    expect(query).not.toHaveProperty('skip');
+    expect(query).not.toHaveProperty('take');
+  });
+
+  it('buildExportQuery_BlankSearchIsLeftOut_AndASearchIsKeptUntrimmed', () => {
+    expect(buildExportQuery({ search: '   ' })).not.toHaveProperty('search');
+    expect(buildExportQuery({ search: ' about' }).search).toBe(' about');
+  });
+
+  it('buildExportQuery_EmptySentinelBecomesNoDomainAndNoCultureFlags', () => {
+    const query = buildExportQuery({ domain: PNFT_EMPTY, culture: PNFT_EMPTY });
+
+    expect(query.noDomain).toBe(true);
+    expect(query.noCulture).toBe(true);
+    expect(query).not.toHaveProperty('domain');
+    expect(query).not.toHaveProperty('culture');
+  });
+
+  it('buildExportQuery_ValueNamedEmptyIsSentAsAValue', () => {
+    expect(buildExportQuery({ domain: 'empty', culture: 'all' })).toMatchObject({ domain: 'empty', culture: 'all' });
   });
 });

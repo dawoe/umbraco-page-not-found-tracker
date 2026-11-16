@@ -99,6 +99,23 @@ Redirect handling cannot be switched off in Umbraco 17. If you changed the redir
 
 A more specific rule may also win over yours: see *When several rules match* in [Blocking](blocking.md).
 
+## The export shows one column in Excel
+
+The export separates columns with a semicolon (`;`). Excel splits a CSV on the list separator of the Windows regional
+settings: a semicolon in most of Europe, a comma in the US and the UK. With a comma, Excel shows each row as one long
+cell.
+
+1. In Excel, use **Data > From Text/CSV**, choose the file, set the **Delimiter** to **Semicolon** and load it. Keep
+   the file origin on **UTF-8**.
+2. Or change the list separator: Windows **Settings > Time & language > Region > Additional date, time & regional
+   settings > Change date, time or number formats > Additional settings**, field **List separator**.
+
+If accents look wrong the file was opened as another encoding: open it with the same **From Text/CSV** route.
+
+If the **Export** button is missing, see [The dashboards are not visible](#the-dashboards-are-not-visible): it is
+shown to the same people. If the download fails, check the site log: an error is logged when the export fails after it
+has started.
+
 ## The dashboards are not visible
 
 1. **User group.** The dashboards are for the groups in `DashboardUserGroups`, by default **Administrators** and

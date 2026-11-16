@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateBlockRuleData, CreateBlockRuleErrors, CreateBlockRuleResponses, CreateTrackedUrlRedirectData, CreateTrackedUrlRedirectErrors, CreateTrackedUrlRedirectResponses, DeleteBlockRuleData, DeleteBlockRuleErrors, DeleteBlockRuleResponses, DeleteMatchingTrackedUrlsData, DeleteMatchingTrackedUrlsErrors, DeleteMatchingTrackedUrlsResponses, DeleteTrackedUrlData, DeleteTrackedUrlErrors, DeleteTrackedUrlResponses, DeleteTrackedUrlsData, DeleteTrackedUrlsErrors, DeleteTrackedUrlsResponses, GetBlockRulesData, GetBlockRulesErrors, GetBlockRulesResponses, GetBlockScopeOptionsData, GetBlockScopeOptionsErrors, GetBlockScopeOptionsResponses, GetDashboardAccessData, GetDashboardAccessErrors, GetDashboardAccessResponses, GetTrackedUrlFilterOptionsData, GetTrackedUrlFilterOptionsErrors, GetTrackedUrlFilterOptionsResponses, GetTrackedUrlsData, GetTrackedUrlsErrors, GetTrackedUrlsResponses, UpdateBlockRuleData, UpdateBlockRuleErrors, UpdateBlockRuleResponses } from './types.gen';
+import type { CreateBlockRuleData, CreateBlockRuleErrors, CreateBlockRuleResponses, CreateTrackedUrlRedirectData, CreateTrackedUrlRedirectErrors, CreateTrackedUrlRedirectResponses, DeleteBlockRuleData, DeleteBlockRuleErrors, DeleteBlockRuleResponses, DeleteMatchingTrackedUrlsData, DeleteMatchingTrackedUrlsErrors, DeleteMatchingTrackedUrlsResponses, DeleteTrackedUrlData, DeleteTrackedUrlErrors, DeleteTrackedUrlResponses, DeleteTrackedUrlsData, DeleteTrackedUrlsErrors, DeleteTrackedUrlsResponses, ExportTrackedUrlsData, ExportTrackedUrlsErrors, ExportTrackedUrlsResponses, GetBlockRulesData, GetBlockRulesErrors, GetBlockRulesResponses, GetBlockScopeOptionsData, GetBlockScopeOptionsErrors, GetBlockScopeOptionsResponses, GetDashboardAccessData, GetDashboardAccessErrors, GetDashboardAccessResponses, GetTrackedUrlFilterOptionsData, GetTrackedUrlFilterOptionsErrors, GetTrackedUrlFilterOptionsResponses, GetTrackedUrlsData, GetTrackedUrlsErrors, GetTrackedUrlsResponses, UpdateBlockRuleData, UpdateBlockRuleErrors, UpdateBlockRuleResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -102,6 +102,12 @@ export const deleteMatchingTrackedUrls = <ThrowOnError extends boolean = true>(o
         'Content-Type': 'application/json',
         ...options?.headers
     }
+});
+
+export const exportTrackedUrls = <ThrowOnError extends boolean = true>(options?: Options<ExportTrackedUrlsData, ThrowOnError>): RequestResult<ExportTrackedUrlsResponses, ExportTrackedUrlsErrors, ThrowOnError> => (options?.client ?? client).get<ExportTrackedUrlsResponses, ExportTrackedUrlsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/umbraco/pagenotfoundtracker/api/v1/tracked-urls/export',
+    ...options
 });
 
 export const getTrackedUrlFilterOptions = <ThrowOnError extends boolean = true>(options?: Options<GetTrackedUrlFilterOptionsData, ThrowOnError>): RequestResult<GetTrackedUrlFilterOptionsResponses, GetTrackedUrlFilterOptionsErrors, ThrowOnError> => (options?.client ?? client).get<GetTrackedUrlFilterOptionsResponses, GetTrackedUrlFilterOptionsErrors, ThrowOnError>({

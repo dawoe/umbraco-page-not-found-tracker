@@ -2,6 +2,7 @@ import type { UmbBackofficeExtensionRegistry } from "@umbraco-cms/backoffice/ext
 import { manifests as blockingManifests } from "./blocking/manifests";
 import { manifests as collectionManifests } from "./collection/manifests";
 import { manifests as conditionManifests } from "./conditions/manifests";
+import { manifests as exportManifests } from "./export/manifests";
 import { manifests as deleteManifests } from "./delete/manifests";
 import { manifests as trackedUrlsDashboardManifests } from "./dashboards/tracked-urls/manifests";
 import { manifests as localizationManifests } from "./localization/manifests";
@@ -15,6 +16,7 @@ export function registerManifest(registry: UmbBackofficeExtensionRegistry) {
     ...trackedUrlsDashboardManifests,
     ...redirectManifests,
     ...blockingManifests,
+    ...exportManifests,
     ...deleteManifests,
   ]);
 }
