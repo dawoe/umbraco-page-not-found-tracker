@@ -210,6 +210,37 @@ internal sealed class ExportTrackedUrlsControllerTests
             Times.Never);
     }
 
+    /// <summary>
+    /// A closed tab can surface as a provider exception that is not an <see cref="OperationCanceledException"/> (SqlClient
+    /// reports a cancelled command as a SqlException): once the client is gone that is not an export failure.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Test]
+    public async Task Export_ClientGoneAndTheProviderThrowsAnotherException_IsQuiet()
+    {
+        using var cts = new CancellationTokenSource();
+        this.httpContext.RequestAborted = cts.Token;
+        this.rows = _ => ThrowOtherExceptionWhenCancelled(cts);
+
+        IActionResult result = await this.CreateController().ExportTrackedUrls(CancellationToken.None);
+        await this.ExecuteAsync(result);
+
+        Assert.That(this.lifetime.Aborted, Is.False);
+        this.logger.Verify(
+            l => l.Log(LogLevel.Error, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(), It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never);
+    }
+
+    private static async IAsyncEnumerable<TrackedUrl> ThrowOtherExceptionWhenCancelled(CancellationTokenSource cts)
+    {
+        await Task.CompletedTask;
+        await cts.CancelAsync();
+        throw new InvalidOperationException("Operation cancelled by user.");
+#pragma warning disable CS0162 // Unreachable code: makes this an iterator.
+        yield break;
+#pragma warning restore CS0162
+    }
+
     private static TrackedUrl Row(string url) =>
         new()
         {

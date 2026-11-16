@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { classifyExportError, fileNameFromDisposition } from './export.service.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { classifyExportError, fileNameFromDisposition, saveBlobAsFile } from './export.service.js';
 
 describe('fileNameFromDisposition', () => {
   it('fileNameFromDisposition_QuotedFileName_ReturnsIt', () => {
@@ -28,5 +28,29 @@ describe('classifyExportError', () => {
     expect(classifyExportError(new TypeError('Failed to fetch'))).toBe('failed');
     expect(classifyExportError({ status: 500 })).toBe('failed');
     expect(classifyExportError(undefined)).toBe('failed');
+  });
+});
+
+describe('saveBlobAsFile', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('saveBlobAsFile_RevokesTheObjectUrlOnlyAfterTheBrowserHadTimeToStartTheDownload', () => {
+    vi.useFakeTimers();
+    const anchor = { addEventListener: vi.fn(), click: vi.fn(), remove: vi.fn(), style: {} as Record<string, string> };
+    vi.stubGlobal('document', { createElement: vi.fn(() => anchor), body: { appendChild: vi.fn() } });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+
+    saveBlobAsFile(new Blob(['x']), 'file.csv');
+
+    expect(anchor.click).toHaveBeenCalledOnce();
+    // Firefox and Safari can fail a download whose object URL was revoked in the same tick as the click.
+    expect(revoke).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(60_000);
+    expect(revoke).toHaveBeenCalledWith('blob:test');
   });
 });

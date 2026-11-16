@@ -27,9 +27,10 @@ paging.
 
 - **Read lazily.** The endpoint writes each row to the response as it arrives and flushes in chunks. An exporter that
   collects the rows first (`ToList()`) loads the whole table into memory, which is what the streaming is there to avoid.
-- **Honour the cancellation token.** It is cancelled when the editor closes the browser or the download is cancelled.
-- **Throwing ends the download.** The status and the first bytes of the file have been sent by then, so the connection
-  is aborted and the browser reports a failed download. Nothing is saved as a short file.
+- **Honour the cancellation token.** It is cancelled when the editor closes the browser tab. Anything an exporter
+  throws after that is treated as part of the cancellation and not logged as a failure.
+- **Throwing ends the export.** The status and the first bytes of the file have been sent by then, so the connection
+  is aborted, the error is logged, and the dashboard shows that the export failed. Nothing is saved as a short file.
 - The export has no row limit. Excel stops at 1,048,576 rows.
 
 ## Example

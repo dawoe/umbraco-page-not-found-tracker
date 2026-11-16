@@ -2,6 +2,9 @@ import { PNFT_EXPORT_FALLBACK_FILE_NAME } from './constants.js';
 
 // Pure helpers of the export (no backoffice runtime imports, so they run in Vitest), plus the browser download.
 
+/** How long the object URL of a download lives (the delay FileSaver.js uses for the same reason). */
+const REVOKE_DELAY_MS = 40_000;
+
 /** How an export failure reads to the editor. */
 export type PnftExportErrorKind = 'unavailable' | 'forbidden' | 'failed';
 
@@ -42,6 +45,7 @@ export function saveBlobAsFile(blob: Blob, fileName: string): void {
     anchor.click();
     anchor.remove();
   } finally {
-    URL.revokeObjectURL(url);
+    // Not in the same tick as the click: Firefox and Safari can fail a download whose object URL is already revoked.
+    setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
   }
 }

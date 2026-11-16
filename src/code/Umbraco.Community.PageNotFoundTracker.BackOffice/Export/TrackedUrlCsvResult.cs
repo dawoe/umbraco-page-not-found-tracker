@@ -63,9 +63,10 @@ internal sealed class TrackedUrlCsvResult(ITrackedUrlExporter exporter, TrackedU
 
             await WriteAndFlushAsync(response, buffer, cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
-            // The client went away: the database read has ended with it.
+            // The client went away and the database read ended with it. Not only an OperationCanceledException: SqlClient
+            // reports a command cancelled this way as a SqlException, which is not an export failure.
         }
         catch (Exception ex)
         {

@@ -80,8 +80,8 @@ Good to know:
 - The rows are read while the file is written, so a hit that arrives meanwhile can be counted or not. It is not a
   snapshot.
 - Excel holds at most 1,048,576 rows. A site that tracks more than that needs a filter, or another tool.
-- If the download breaks off (the server restarts, the connection drops) the browser reports a failed download instead
-  of saving a short file.
+- If the export breaks off (the server restarts, the connection drops) the dashboard shows that the export failed and
+  no file is saved, so a short file never passes for a complete one.
 
 ## Blocked URLs
 
